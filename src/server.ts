@@ -8,11 +8,12 @@ import { registerIngestReviewRoutes } from "./routes/ingestReview";
 import { registerDebugModelRoutes } from "./routes/debugModel";
 import { registerDebugMemoryRoutes } from "./routes/debugMemory";
 import { registerOperatorInboxRoutes } from "./routes/operatorInbox";
+import { registerBillingStripeRoutes } from "./routes/billingStripeWebhook";
+import { registerAnalysisAgentRoutes } from "./routes/analysisAgent";
 
 const app = Fastify({});
 
 app.removeAllContentTypeParsers();
-
 app.removeContentTypeParser("multipart/form-data");
 
 app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
@@ -41,6 +42,8 @@ app.register(registerIngestReviewRoutes);
 app.register(registerDebugModelRoutes);
 app.register(registerDebugMemoryRoutes);
 app.register(registerOperatorInboxRoutes);
+app.register(registerBillingStripeRoutes);
+app.register(registerAnalysisAgentRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");
