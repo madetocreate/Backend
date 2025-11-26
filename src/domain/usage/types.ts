@@ -12,7 +12,8 @@ export type UsageEventType =
   | "calendar_query"
   | "marketing_content"
   | "social_schedule"
-  | "research_query";
+  | "research_query"
+  | "webshop_assist";
 
 export type UsageEvent = {
   tenantId: TenantId;

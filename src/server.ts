@@ -19,6 +19,7 @@ import { registerCalendarAgentRoutes } from "./routes/calendarAgent";
 import { registerMarketingAgentRoutes } from "./routes/marketingAgent";
 import { registerSocialAgentRoutes } from "./routes/socialAgent";
 import { registerResearchAgentRoutes } from "./routes/researchAgent";
+import { registerWebshopAgentRoutes } from "./routes/webshopAgent";
 
 const app = Fastify({});
 
@@ -62,6 +63,7 @@ app.register(registerCalendarAgentRoutes);
 app.register(registerMarketingAgentRoutes);
 app.register(registerSocialAgentRoutes);
 app.register(registerResearchAgentRoutes);
+app.register(registerWebshopAgentRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");
