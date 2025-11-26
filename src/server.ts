@@ -1,41 +1,41 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { env } from "./config/env";
 import { registerChatRoutes } from "./routes/chat";
 import { registerChatStreamRoutes } from "./routes/chatStream";
 import { registerIngestEmailRoutes } from "./routes/ingestEmail";
 import { registerIngestDmRoutes } from "./routes/ingestDm";
 import { registerIngestReviewRoutes } from "./routes/ingestReview";
 
-function buildServer() {
-  const app = Fastify({ logger: true });
+const app = Fastify({});
 
-  app.register(cors, { origin: true });
+app.removeAllContentTypeParsers();
 
-  app.get("/health", async () => {
-    return { status: "ok" };
-  });
+app.removeContentTypeParser("multipart/form-data");
 
-  void registerChatRoutes(app);
-  void registerChatStreamRoutes(app);
-  void registerIngestEmailRoutes(app);
-  void registerIngestDmRoutes(app);
-  void registerIngestReviewRoutes(app);
-
-  return app;
-}
-
-async function start() {
-  const app = buildServer();
-  const port = env.PORT;
-  const host = "0.0.0.0";
-
+app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
   try {
-    await app.listen({ port, host });
-  } catch (error) {
-    app.log.error(error);
-    process.exit(1);
+    const jsonString = typeof body === "string" ? body : body.toString("utf8");
+    const parsed = JSON.parse(jsonString);
+    done(null, parsed);
+  } catch (e) {
+    done(e as any);
   }
-}
+});
 
-void start();
+app.addContentTypeParser("*", (_req, _body, done) => {
+  done(new Error("invalid_content_type"));
+});
+
+app.register(cors);
+
+app.get("/health", async () => ({ status: "ok" }));
+
+app.register(registerChatRoutes);
+app.register(registerChatStreamRoutes);
+app.register(registerIngestEmailRoutes);
+app.register(registerIngestDmRoutes);
+app.register(registerIngestReviewRoutes);
+
+app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
+  console.log("Server listening");
+});

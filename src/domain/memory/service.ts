@@ -1,9 +1,14 @@
-import { MemorySearchRequest, MemorySearchResult, MemoryWriteRequest } from "./types";
+import { MemoryWriteRequest } from "./types";
+import { uploadTextToVectorStore } from "../vector/service";
 
-export async function writeMemory(_request: MemoryWriteRequest): Promise<void> {
-  return;
+export async function writeMemory(request: MemoryWriteRequest) {
+  const text = typeof request.content === "string"
+    ? request.content
+    : String(request.content ?? "");
+
+  await uploadTextToVectorStore(request.tenantId, text);
 }
 
-export async function searchMemory(_request: MemorySearchRequest): Promise<MemorySearchResult[]> {
+export async function searchMemory() {
   return [];
 }

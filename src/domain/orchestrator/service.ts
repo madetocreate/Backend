@@ -1,36 +1,57 @@
-import { runChatRaw } from "../chat/service";
-import { buildMessages } from "./prompt";
-import { OrchestratorInput, OrchestratorOutput, OrchestratorOutputAction } from "./types";
+import { openai } from "../../integrations/openai/client";
+import { getVectorStoreId } from "../vector/service";
+import { summarizeText } from "./summary";
 
-export async function runOrchestrator(input: OrchestratorInput): Promise<OrchestratorOutput> {
-  const messages = buildMessages(input);
+export type OrchestratorInput = {
+  tenantId: string;
+  sessionId: string;
+  channel: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+};
 
-  const result = (await runChatRaw({
-    messages,
-    stream: false
-  })) as { content: string };
+export async function createResponse(input: OrchestratorInput) {
+  const vectorStoreId = await getVectorStoreId(input.tenantId);
+
+  if (input.metadata && input.metadata.summarize) {
+    const summary = await summarizeText(input.message);
+    return {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      channel: input.channel,
+      content: summary
+    };
+  }
+
+  const response = await openai.responses.create({
+    model: "gpt-4.1",
+    input: [
+      { role: "system", content: "You are the Aklow Orchestrator. Behave like ChatGPT but focused on business clarity." },
+      { role: "user", content: input.message }
+    ],
+    tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }]
+  });
 
   return {
-    content: result.content,
-    actions: []
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    channel: input.channel,
+    content: response.output_text
   };
 }
 
-export type OrchestratorStreamResult = {
-  stream: AsyncIterable<any>;
-  actions?: OrchestratorOutputAction[];
-};
+export async function createStreamingResponse(input: OrchestratorInput) {
+  const vectorStoreId = await getVectorStoreId(input.tenantId);
 
-export async function runOrchestratorStream(input: OrchestratorInput): Promise<OrchestratorStreamResult> {
-  const messages = buildMessages(input);
-
-  const result = (await runChatRaw({
-    messages,
+  const response = await openai.responses.create({
+    model: "gpt-4.1",
+    input: [
+      { role: "system", content: "You are the Aklow Orchestrator. Behave like ChatGPT but focused on business clarity." },
+      { role: "user", content: input.message }
+    ],
+    tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }],
     stream: true
-  })) as { stream: AsyncIterable<any> };
+  });
 
-  return {
-    stream: result.stream,
-    actions: []
-  };
+  return response;
 }
