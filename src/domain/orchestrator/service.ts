@@ -31,7 +31,6 @@ export async function createResponse(input: OrchestratorInput) {
       }
     ],
     tools: [
-      { type: "web_search" },
       { type: "file_search", vector_store_ids: [vectorStoreId] }
     ]
   });
@@ -73,7 +72,6 @@ export async function createStreamingResponse(input: OrchestratorInput) {
       }
     ],
     tools: [
-      { type: "web_search" },
       { type: "file_search", vector_store_ids: [vectorStoreId] }
     ],
     stream: true

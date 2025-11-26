@@ -10,7 +10,9 @@ export type UsageEventType =
   | "ingest_audio"
   | "image_generation"
   | "calendar_query"
-  | "marketing_content";
+  | "marketing_content"
+  | "social_schedule"
+  | "research_query";
 
 export type UsageEvent = {
   tenantId: TenantId;
