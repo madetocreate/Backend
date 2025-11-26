@@ -4,7 +4,7 @@ import { summarizeText } from "./summary";
 import { OrchestratorInput } from "./types-orchestrator";
 import { buildInstructions } from "./instructions";
 import { getChatModel } from "../../config/model";
-import { writeMemory } from "../memory/service";
+import { writeMemory, getConversationMemory } from "../memory/service";
 import { handleInboxRequest, handleReplyRequest } from "../communications/service";
 import { handleResearchQuery } from "../research/service";
 import { handleAnalysisQuery } from "../analysis/service";
@@ -255,15 +255,31 @@ export async function createResponse(input: OrchestratorInput) {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
+  const history = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message"]
+  });
+
+  const inputMessages: { role: "user"; content: string }[] = [];
+
+  for (const record of history) {
+    inputMessages.push({
+      role: "user",
+      content: record.content
+    });
+  }
+
+  inputMessages.push({
+    role: "user",
+    content: input.message
+  });
+
   const response = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: [
-      {
-        role: "user",
-        content: input.message
-      }
-    ],
+    input: inputMessages,
     tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }]
   });
 
@@ -294,15 +310,31 @@ export async function createStreamingResponse(input: OrchestratorInput) {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
+  const history = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message"]
+  });
+
+  const inputMessages: { role: "user"; content: string }[] = [];
+
+  for (const record of history) {
+    inputMessages.push({
+      role: "user",
+      content: record.content
+    });
+  }
+
+  inputMessages.push({
+    role: "user",
+    content: input.message
+  });
+
   const stream = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: [
-      {
-        role: "user",
-        content: input.message
-      }
-    ],
+    input: inputMessages,
     tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }],
     stream: true
   });

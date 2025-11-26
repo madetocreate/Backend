@@ -1,7 +1,18 @@
-import { MemoryWriteRequest, MemorySearchRequest, MemorySearchResult } from "./types";
+import {
+  MemoryWriteRequest,
+  MemorySearchRequest,
+  MemorySearchResult,
+  LocalMemoryRecord,
+  MemoryItemType
+} from "./types";
 import { shouldStoreLocally, shouldStoreInVector } from "./policy";
 import { uploadMemoryToVectorStores } from "../vector/service";
-import { createMemoryRecordFromWriteRequest, saveMemoryRecord, searchMemoryRecords } from "./repository";
+import {
+  createMemoryRecordFromWriteRequest,
+  saveMemoryRecord,
+  searchMemoryRecords,
+  getConversationMemoryRecords
+} from "./repository";
 
 export async function writeMemory(request: MemoryWriteRequest) {
   const text =
@@ -23,4 +34,19 @@ export async function writeMemory(request: MemoryWriteRequest) {
 
 export async function searchMemory(request: MemorySearchRequest): Promise<MemorySearchResult[]> {
   return searchMemoryRecords(request);
+}
+
+export async function getConversationMemory(params: {
+  tenantId: string;
+  conversationId: string;
+  limit?: number;
+  types?: MemoryItemType[];
+}): Promise<LocalMemoryRecord[]> {
+  const { tenantId, conversationId, limit, types } = params;
+  return getConversationMemoryRecords({
+    tenantId,
+    conversationId,
+    limit,
+    types
+  });
 }

@@ -2,7 +2,13 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { LocalMemoryRecord, MemorySearchRequest, MemorySearchResult, MemoryWriteRequest } from "./types";
+import {
+  LocalMemoryRecord,
+  MemorySearchRequest,
+  MemorySearchResult,
+  MemoryWriteRequest,
+  MemoryItemType
+} from "./types";
 
 const memoryDir = path.join(os.homedir(), "Documents", "Backend-Data");
 const memoryFilePath = path.join(memoryDir, "memory.jsonl");
@@ -137,4 +143,34 @@ export async function searchMemoryRecords(request: MemorySearchRequest): Promise
   }
 
   return results;
+}
+
+export function getConversationMemoryRecords(params: {
+  tenantId: string;
+  conversationId: string;
+  types?: MemoryItemType[];
+  limit?: number;
+}): LocalMemoryRecord[] {
+  const { tenantId, conversationId, types, limit = 20 } = params;
+
+  const filtered = localMemory.filter((record) => {
+    if (record.tenantId !== tenantId) {
+      return false;
+    }
+    if (record.conversationId !== conversationId) {
+      return false;
+    }
+    if (types && types.length > 0 && !types.includes(record.type)) {
+      return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  if (filtered.length <= limit) {
+    return filtered;
+  }
+
+  return filtered.slice(filtered.length - limit);
 }
