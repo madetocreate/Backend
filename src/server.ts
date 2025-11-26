@@ -14,6 +14,9 @@ import { registerCommunicationsAgentRoutes } from "./routes/communicationsAgent"
 import { registerIngestAudioRoutes } from "./routes/ingestAudio";
 import { registerReviewsAgentRoutes } from "./routes/reviewsAgent";
 import { registerWebsiteAgentRoutes } from "./routes/websiteAgent";
+import { registerContentAgentRoutes } from "./routes/contentAgent";
+import { registerCalendarAgentRoutes } from "./routes/calendarAgent";
+import { registerMarketingAgentRoutes } from "./routes/marketingAgent";
 
 const app = Fastify({});
 
@@ -52,6 +55,9 @@ app.register(registerCommunicationsAgentRoutes);
 app.register(registerReviewsAgentRoutes);
 app.register(registerIngestAudioRoutes);
 app.register(registerWebsiteAgentRoutes);
+app.register(registerContentAgentRoutes);
+app.register(registerCalendarAgentRoutes);
+app.register(registerMarketingAgentRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");
