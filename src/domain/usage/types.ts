@@ -5,7 +5,8 @@ export type UsageEventType =
   | "chat_stream"
   | "ingest_email"
   | "ingest_dm"
-  | "ingest_review";
+  | "ingest_review"
+  | "ingest_audio";
 
 export type UsageEvent = {
   tenantId: TenantId;

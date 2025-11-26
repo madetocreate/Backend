@@ -10,6 +10,9 @@ import { registerDebugMemoryRoutes } from "./routes/debugMemory";
 import { registerOperatorInboxRoutes } from "./routes/operatorInbox";
 import { registerBillingStripeRoutes } from "./routes/billingStripeWebhook";
 import { registerAnalysisAgentRoutes } from "./routes/analysisAgent";
+import { registerCommunicationsAgentRoutes } from "./routes/communicationsAgent";
+import { registerIngestAudioRoutes } from "./routes/ingestAudio";
+import { registerReviewsAgentRoutes } from "./routes/reviewsAgent";
 
 const app = Fastify({});
 
@@ -44,6 +47,9 @@ app.register(registerDebugMemoryRoutes);
 app.register(registerOperatorInboxRoutes);
 app.register(registerBillingStripeRoutes);
 app.register(registerAnalysisAgentRoutes);
+app.register(registerCommunicationsAgentRoutes);
+app.register(registerReviewsAgentRoutes);
+app.register(registerIngestAudioRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");
