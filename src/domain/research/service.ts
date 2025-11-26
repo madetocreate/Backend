@@ -9,6 +9,7 @@ import {
   ResearchResponse,
   ResearchSource,
 } from "./types";
+import { getConversationMemory } from "../memory/service";
 
 type CoreResult = {
   answer: string;
@@ -18,7 +19,8 @@ type CoreResult = {
 async function callResearchCore(
   input: ResearchRequest,
   vectorStoreId: string | undefined,
-  useTools: boolean
+  useTools: boolean,
+  sessionContext: any[]
 ): Promise<CoreResult> {
   const model = getSummaryModel();
 
@@ -60,6 +62,7 @@ async function callResearchCore(
               tenantId: input.tenantId,
               vectorStoreId,
               metadata: input.metadata,
+              sessionContext
             }),
           },
         ],
@@ -118,6 +121,19 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
   const channel = input.channel ?? "agent_research";
   const now = new Date();
 
+  const sessionContextRecords = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message"]
+  });
+
+  const sessionContext = sessionContextRecords.map(record => ({
+    content: record.content,
+    createdAt: record.createdAt.toISOString(),
+    metadata: record.metadata ?? undefined
+  }));
+
   let vectorStoreId: string | undefined;
   try {
     vectorStoreId = await getVectorStoreId(input.tenantId);
@@ -130,15 +146,13 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
   let usedTools = false;
 
   try {
-    // erster Versuch: mit Tools (web_search + optional file_search)
-    const coreWithTools = await callResearchCore(input, vectorStoreId, true);
+    const coreWithTools = await callResearchCore(input, vectorStoreId, true, sessionContext);
     answer = coreWithTools.answer;
     sources = coreWithTools.sources;
     usedTools = true;
 
-    // wenn wirklich gar nichts kam, machen wir optional noch einen zweiten Versuch ohne Tools
     if (!answer && sources.length === 0) {
-      const coreNoTools = await callResearchCore(input, vectorStoreId, false);
+      const coreNoTools = await callResearchCore(input, vectorStoreId, false, sessionContext);
       if (coreNoTools.answer) {
         answer = coreNoTools.answer;
         sources = coreNoTools.sources;
@@ -146,9 +160,8 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
       }
     }
   } catch {
-    // wenn Tools-Aufruf komplett scheitert: zweiter Versuch ohne Tools
     try {
-      const coreNoTools = await callResearchCore(input, vectorStoreId, false);
+      const coreNoTools = await callResearchCore(input, vectorStoreId, false, sessionContext);
       answer = coreNoTools.answer;
       sources = coreNoTools.sources;
       usedTools = false;

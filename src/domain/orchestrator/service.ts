@@ -4,27 +4,59 @@ import { summarizeText } from "./summary";
 import { OrchestratorInput } from "./types-orchestrator";
 import { buildInstructions } from "./instructions";
 import { getChatModel } from "../../config/model";
-import { writeMemory, getConversationMemory } from "../memory/service";
+import { writeMemory } from "../memory/service";
 import { handleInboxRequest, handleReplyRequest } from "../communications/service";
 import { handleResearchQuery } from "../research/service";
 import { handleAnalysisQuery } from "../analysis/service";
 
+type OrchestratorStep = {
+  id: string;
+  label: string;
+  status: "done";
+  details?: string;
+};
+
 export async function createResponse(input: OrchestratorInput) {
   const metadata = (input.metadata ?? {}) as any;
+  const steps: OrchestratorStep[] = [];
+
+  steps.push({
+    id: "inspect_metadata",
+    label: "Modus und Tool aus Metadaten bestimmen",
+    status: "done"
+  });
 
   if (metadata.summarize) {
+    steps.push({
+      id: "summarize_text",
+      label: "Text zusammenfassen",
+      status: "done"
+    });
+
     const summary = await summarizeText(input.message);
     return {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       channel: input.channel,
-      content: summary
+      content: summary,
+      steps
     };
   }
 
   const tool = typeof metadata.tool === "string" ? metadata.tool : undefined;
 
   if (tool === "communications_inbox") {
+    steps.push({
+      id: "load_inbox_memory",
+      label: "Memory nach Kommunikations-Nachrichten durchsuchen",
+      status: "done"
+    });
+    steps.push({
+      id: "call_communications_inbox_agent",
+      label: "Communications-Agent für Inbox-Übersicht aufrufen",
+      status: "done"
+    });
+
     const limitRaw = metadata.limit;
     const limit =
       typeof limitRaw === "number" && Number.isInteger(limitRaw) && limitRaw >= 1 && limitRaw <= 100
@@ -45,6 +77,13 @@ export async function createResponse(input: OrchestratorInput) {
     });
 
     const content = inboxResult.summary ?? "";
+
+    steps.push({
+      id: "store_inbox_summary_memory",
+      label: "Inbox-Zusammenfassung im Memory speichern",
+      status: "done",
+      details: "conversation_message"
+    });
 
     await writeMemory({
       tenantId: input.tenantId,
@@ -68,11 +107,23 @@ export async function createResponse(input: OrchestratorInput) {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       channel: input.channel,
-      content
+      content,
+      steps
     };
   }
 
   if (tool === "communications_reply") {
+    steps.push({
+      id: "prepare_reply_context",
+      label: "Nachrichtentyp, Original-Nachricht und Tonalität vorbereiten",
+      status: "done"
+    });
+    steps.push({
+      id: "call_communications_reply_agent",
+      label: "Communications-Agent für Antwortvorschläge aufrufen",
+      status: "done"
+    });
+
     const messageType =
       typeof metadata.messageType === "string" && metadata.messageType.trim().length > 0
         ? metadata.messageType
@@ -104,6 +155,13 @@ export async function createResponse(input: OrchestratorInput) {
 
     const content = replyResult.replies ?? "";
 
+    steps.push({
+      id: "store_reply_suggestions_memory",
+      label: "Antwortvorschläge im Memory speichern",
+      status: "done",
+      details: "conversation_message"
+    });
+
     await writeMemory({
       tenantId: input.tenantId,
       type: "conversation_message",
@@ -128,11 +186,23 @@ export async function createResponse(input: OrchestratorInput) {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       channel: input.channel,
-      content
+      content,
+      steps
     };
   }
 
   if (tool === "analysis_query") {
+    steps.push({
+      id: "prepare_analysis_query",
+      label: "Analyse-Frage und Kontext vorbereiten",
+      status: "done"
+    });
+    steps.push({
+      id: "call_analysis_agent",
+      label: "Analyse-Agent für Dokumentauswertung aufrufen",
+      status: "done"
+    });
+
     const messageRaw = metadata.message;
     const message =
       typeof messageRaw === "string" && messageRaw.trim().length > 0
@@ -146,6 +216,13 @@ export async function createResponse(input: OrchestratorInput) {
     });
 
     const content = analysisResult.content ?? "";
+
+    steps.push({
+      id: "store_analysis_memory",
+      label: "Analyse-Ergebnis im Memory speichern",
+      status: "done",
+      details: "conversation_message"
+    });
 
     await writeMemory({
       tenantId: input.tenantId,
@@ -169,11 +246,23 @@ export async function createResponse(input: OrchestratorInput) {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       channel: input.channel,
-      content
+      content,
+      steps
     };
   }
 
   if (tool === "research_query") {
+    steps.push({
+      id: "prepare_research_question",
+      label: "Research-Frage, Scope und Limits vorbereiten",
+      status: "done"
+    });
+    steps.push({
+      id: "call_research_agent",
+      label: "Research-Agent mit Websuche und optionalem Business-Memory aufrufen",
+      status: "done"
+    });
+
     const questionRaw = metadata.question;
     const question =
       typeof questionRaw === "string" && questionRaw.trim().length > 0
@@ -223,6 +312,13 @@ export async function createResponse(input: OrchestratorInput) {
       content = content + "\n\n" + lines.join("\n");
     }
 
+    steps.push({
+      id: "store_research_memory",
+      label: "Research-Ergebnis mit Quellen im Memory speichern",
+      status: "done",
+      details: "conversation_message"
+    });
+
     await writeMemory({
       tenantId: input.tenantId,
       type: "conversation_message",
@@ -248,42 +344,46 @@ export async function createResponse(input: OrchestratorInput) {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       channel: input.channel,
-      content
+      content,
+      steps
     };
   }
+
+  steps.push({
+    id: "prepare_vector_and_instructions",
+    label: "Business-Memory laden und Orchestrator-Instruktionen bauen",
+    status: "done"
+  });
 
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
-  const history = await getConversationMemory({
-    tenantId: input.tenantId,
-    conversationId: input.sessionId,
-    limit: 20,
-    types: ["conversation_message"]
-  });
-
-  const inputMessages: { role: "user"; content: string }[] = [];
-
-  for (const record of history) {
-    inputMessages.push({
-      role: "user",
-      content: record.content
-    });
-  }
-
-  inputMessages.push({
-    role: "user",
-    content: input.message
+  steps.push({
+    id: "call_orchestrator_model",
+    label: "Orchestrator-Modell mit file_search-Tool aufrufen",
+    status: "done"
   });
 
   const response = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: inputMessages,
+    input: [
+      {
+        role: "user",
+        content: input.message
+      }
+    ],
     tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }]
   });
 
   const content = response.output_text;
+
+  steps.push({
+    id: "store_general_chat_memory",
+    label: "Antwort als Konversations-Memory speichern",
+    status: "done",
+    details: "conversation_message"
+  });
 
   await writeMemory({
     tenantId: input.tenantId,
@@ -302,7 +402,8 @@ export async function createResponse(input: OrchestratorInput) {
     tenantId: input.tenantId,
     sessionId: input.sessionId,
     channel: input.channel,
-    content
+    content,
+    steps
   };
 }
 
@@ -310,31 +411,15 @@ export async function createStreamingResponse(input: OrchestratorInput) {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
-  const history = await getConversationMemory({
-    tenantId: input.tenantId,
-    conversationId: input.sessionId,
-    limit: 20,
-    types: ["conversation_message"]
-  });
-
-  const inputMessages: { role: "user"; content: string }[] = [];
-
-  for (const record of history) {
-    inputMessages.push({
-      role: "user",
-      content: record.content
-    });
-  }
-
-  inputMessages.push({
-    role: "user",
-    content: input.message
-  });
-
   const stream = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: inputMessages,
+    input: [
+      {
+        role: "user",
+        content: input.message
+      }
+    ],
     tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }],
     stream: true
   });

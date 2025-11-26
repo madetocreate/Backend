@@ -1,6 +1,7 @@
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
 import { searchMemoryRecords } from "../memory/repository";
+import { getConversationMemory } from "../memory/service";
 
 export type InboxInput = {
   tenantId: string;
@@ -105,6 +106,20 @@ export async function handleInboxRequest(input: InboxInput) {
 
 export async function handleReplyRequest(input: ReplyInput) {
   const system = COMMUNICATIONS_AGENT_SYSTEM_PROMPT;
+
+  const sessionContextRecords = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message"]
+  });
+
+  const sessionContext = sessionContextRecords.map(record => ({
+    content: record.content,
+    createdAt: record.createdAt.toISOString(),
+    metadata: record.metadata ?? undefined
+  }));
+
   const response = await openai.responses.create({
     model: getSummaryModel(),
     instructions: system,
@@ -116,7 +131,8 @@ export async function handleReplyRequest(input: ReplyInput) {
           messageType: input.messageType,
           original: input.original,
           tone: input.tone ?? "freundlich",
-          variants: input.variants ?? 1
+          variants: input.variants ?? 1,
+          sessionContext
         })
       }
     ]

@@ -9,6 +9,7 @@ import {
   WebshopCartSuggestion,
   WebshopFilterSuggestion,
 } from "./types";
+import { getConversationMemory } from "../memory/service";
 
 export async function generateWebshopAssistance(
   input: WebshopAssistRequest
@@ -16,6 +17,19 @@ export async function generateWebshopAssistance(
   const channel = "agent_webshop";
   const now = new Date();
   const model = getSummaryModel();
+
+  const sessionContextRecords = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message"]
+  });
+
+  const sessionContext = sessionContextRecords.map(record => ({
+    content: record.content,
+    createdAt: record.createdAt.toISOString(),
+    metadata: record.metadata ?? undefined
+  }));
 
   let answer =
     "Ich konnte keine sinnvolle Empfehlung erzeugen. Bitte formuliere deine Anfrage konkreter oder versuche es später erneut.";
@@ -52,6 +66,7 @@ export async function generateWebshopAssistance(
                 constraints: input.constraints,
                 locale: input.locale,
                 metadata: input.metadata,
+                sessionContext
               }),
             },
           ],

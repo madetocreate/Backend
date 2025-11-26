@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
 import { uploadDocumentFileToVectorStores, getVectorStoreId } from "../vector/service";
-import { writeMemory } from "../memory/service";
+import { writeMemory, getConversationMemory } from "../memory/service";
 
 export type AnalysisUploadInput = {
   tenantId: string;
@@ -134,13 +134,31 @@ export async function handleAnalysisUpload(input: AnalysisUploadInput): Promise<
 
 export async function handleAnalysisQuery(input: AnalysisQueryInput): Promise<AnalysisQueryResult> {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
+
+  const sessionContextRecords = await getConversationMemory({
+    tenantId: input.tenantId,
+    conversationId: input.sessionId,
+    limit: 20,
+    types: ["conversation_message", "document"]
+  });
+
+  const sessionContext = sessionContextRecords.map(record => ({
+    type: record.type,
+    content: record.content,
+    createdAt: record.createdAt.toISOString(),
+    metadata: record.metadata ?? undefined
+  }));
+
   const response = await openai.responses.create({
     model: getSummaryModel(),
     instructions: ANALYSIS_AGENT_SYSTEM_PROMPT,
     input: [
       {
         role: "user",
-        content: input.message
+        content: JSON.stringify({
+          message: input.message,
+          sessionContext
+        })
       }
     ],
     tools: [
