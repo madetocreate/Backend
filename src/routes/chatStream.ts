@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest } from "fastify";
 import { ChatRequestSchema, ChatRequestBody } from "../domain/chat/schema";
 import { createStreamingResponse } from "../domain/orchestrator/service";
 import { writeSse } from "../http/sse";
+import { writeMemory } from "../domain/memory/service";
 
 type ChatStreamRequest = FastifyRequest<{ Body: ChatRequestBody }>;
 
@@ -21,6 +22,8 @@ export async function registerChatStreamRoutes(app: FastifyInstance) {
 
     writeSse(reply, "start", { started: true });
 
+    let fullContent = "";
+
     try {
       const stream: AsyncIterable<any> = await createStreamingResponse(parsed.data);
 
@@ -28,6 +31,7 @@ export async function registerChatStreamRoutes(app: FastifyInstance) {
         if (event.type === "response.output_text.delta") {
           const delta = typeof event.delta === "string" ? event.delta : "";
           if (delta) {
+            fullContent += delta;
             writeSse(reply, "chunk", { content: delta });
           }
         }
@@ -36,6 +40,24 @@ export async function registerChatStreamRoutes(app: FastifyInstance) {
       writeSse(reply, "end", { done: true });
     } catch (e) {
       writeSse(reply, "error", { message: "response_error" });
+    }
+
+    try {
+      if (fullContent) {
+        await writeMemory({
+          tenantId: parsed.data.tenantId,
+          type: "conversation_message",
+          content: "User: " + parsed.data.message + "\nAssistant: " + fullContent,
+          metadata: {
+            channel: parsed.data.channel,
+            sessionId: parsed.data.sessionId,
+            mode: (parsed.data.metadata as any)?.mode ?? "general_chat"
+          },
+          conversationId: parsed.data.sessionId,
+          createdAt: new Date()
+        });
+      }
+    } catch (e) {
     }
 
     reply.raw.end();
