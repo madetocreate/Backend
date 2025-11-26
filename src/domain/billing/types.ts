@@ -5,7 +5,7 @@ export type ModuleId =
   | "marketing"
   | "website_assistant";
 
-export type PlanId = "starter" | "growth" | "pro";
+export type PlanId = "base_plan";
 
 export type ModuleDefinition = {
   id: ModuleId;

@@ -29,26 +29,12 @@ export const MODULES: Record<ModuleId, ModuleDefinition> = {
 };
 
 export const PLANS: Record<PlanId, PlanDefinition> = {
-  starter: {
-    id: "starter",
-    name: "Starter",
-    description: "Einstiegspaket für kleine Unternehmen mit zentralem Operator und Basis-Funktionen.",
+  base_plan: {
+    id: "base_plan",
+    name: "Aklow Basis",
+    description: "Ein zentrales Abo mit Operator-Funktionen; Module können flexibel dazugebucht werden.",
     monthlyPriceCents: 4900,
-    modules: ["base", "communications"]
-  },
-  growth: {
-    id: "growth",
-    name: "Growth",
-    description: "Für wachsende Unternehmen mit zusätzlichem Fokus auf Bewertungen und Marketing.",
-    monthlyPriceCents: 9900,
-    modules: ["base", "communications", "reviews", "marketing"]
-  },
-  pro: {
-    id: "pro",
-    name: "Pro",
-    description: "Volle Aklow-Power inklusive Website-Assistent und allen Automatisierungsmodulen.",
-    monthlyPriceCents: 14900,
-    modules: ["base", "communications", "reviews", "marketing", "website_assistant"]
+    modules: ["base"]
   }
 };
 
