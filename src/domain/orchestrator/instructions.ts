@@ -1,9 +1,6 @@
 import { OrchestratorInput } from "./types-orchestrator";
+import { getTenantProfile } from "../tenant/service";
 
-/**
- * Global instructions: persona, scope, tone, tools, safety.
- * This is the "brain" of the Aklow Orchestrator.
- */
 export function buildGlobalInstructions(): string {
   return [
     "# Role",
@@ -97,24 +94,38 @@ export function buildGlobalInstructions(): string {
   ].join("\n");
 }
 
-/**
- * Tenant profile layer: currently a simple stub using tenantId.
- * In the future, this should be filled from the tenant database.
- */
 export function buildTenantProfileInstructions(input: OrchestratorInput): string {
-  return [
+  const profile = getTenantProfile(input.tenantId);
+
+  if (!profile) {
+    return [
+      "# Tenant Profile",
+      "",
+      `- Tenant ID: ${input.tenantId}`,
+      "- No explicit tenant profile is stored yet.",
+      "- Use a neutral, clear and professional tone and rely on business memory and the user's instructions."
+    ].join("\n");
+  }
+
+  const lines: string[] = [
     "# Tenant Profile",
     "",
-    `- Tenant ID: ${input.tenantId}`,
-    "- Business name, industry, services and tone-of-voice can be loaded",
-    "  from the platform database for this tenant.",
-    "- Use this tenant context together with business memory to answer company-specific questions."
-  ].join("\n");
+    `- Tenant ID: ${profile.tenantId}`,
+    `- Business name: ${profile.businessName}`,
+    profile.industry ? `- Industry: ${profile.industry}` : "- Industry: not specified",
+    profile.toneOfVoice
+      ? `- Tone-of-voice: ${profile.toneOfVoice}`
+      : "- Tone-of-voice: not explicitly specified, use a clear, friendly and professional tone.",
+    "- Use this tenant profile together with business memory to answer company-specific questions."
+  ];
+
+  if (profile.description) {
+    lines.push("", "Additional description:", profile.description);
+  }
+
+  return lines.join("\n");
 }
 
-/**
- * Agent and module strategy layer.
- */
 export function buildAgentInstructions(): string {
   return [
     "# Agents and Modules",
@@ -140,9 +151,6 @@ export function buildAgentInstructions(): string {
   ].join("\n");
 }
 
-/**
- * Runtime / request-specific layer built from metadata.
- */
 export function buildRuntimeInstructions(input: OrchestratorInput): string {
   const metadata = input.metadata ?? {};
   const summarize = Boolean((metadata as any).summarize);
@@ -177,9 +185,6 @@ export function buildRuntimeInstructions(input: OrchestratorInput): string {
   return lines.join("\n");
 }
 
-/**
- * Build full instructions string for the Responses API.
- */
 export function buildInstructions(input: OrchestratorInput): string {
   const sections = [
     buildGlobalInstructions(),

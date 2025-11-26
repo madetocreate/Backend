@@ -33,6 +33,7 @@ export type MemorySearchResult = {
   tenantId: TenantId;
   type: MemoryItemType;
   content: string;
+  createdAt: Date;
   score?: number;
   metadata?: Record<string, unknown>;
   sourceId?: string;

@@ -1,9 +1,7 @@
-import { randomUUID } from "crypto";
-import { MemoryWriteRequest, MemorySearchRequest, MemorySearchResult, LocalMemoryRecord } from "./types";
+import { MemoryWriteRequest, MemorySearchRequest, MemorySearchResult } from "./types";
 import { shouldStoreLocally, shouldStoreInVector } from "./policy";
 import { uploadMemoryToVectorStores } from "../vector/service";
-
-const localMemory: LocalMemoryRecord[] = [];
+import { createMemoryRecordFromWriteRequest, saveMemoryRecord, searchMemoryRecords } from "./repository";
 
 export async function writeMemory(request: MemoryWriteRequest) {
   const text =
@@ -18,50 +16,11 @@ export async function writeMemory(request: MemoryWriteRequest) {
   }
 
   if (shouldStoreLocally(request.type)) {
-    const record: LocalMemoryRecord = {
-      id: randomUUID(),
-      tenantId: request.tenantId,
-      type: request.type,
-      content: text,
-      metadata: request.metadata,
-      sourceId: request.sourceId,
-      conversationId: request.conversationId,
-      messageId: request.messageId,
-      documentId: request.documentId,
-      createdAt
-    };
-    localMemory.push(record);
+    const record = createMemoryRecordFromWriteRequest(request, text, createdAt);
+    saveMemoryRecord(record);
   }
 }
 
 export async function searchMemory(request: MemorySearchRequest): Promise<MemorySearchResult[]> {
-  const { tenantId, type, query, limit = 20 } = request;
-  const q = query.toLowerCase();
-  const results: MemorySearchResult[] = [];
-
-  for (const record of localMemory) {
-    if (record.tenantId !== tenantId) {
-      continue;
-    }
-    if (type && record.type !== type) {
-      continue;
-    }
-    if (!record.content.toLowerCase().includes(q)) {
-      continue;
-    }
-    results.push({
-      id: record.id,
-      tenantId: record.tenantId,
-      type: record.type,
-      content: record.content,
-      metadata: record.metadata,
-      sourceId: record.sourceId,
-      score: undefined
-    });
-    if (results.length >= limit) {
-      break;
-    }
-  }
-
-  return results;
+  return searchMemoryRecords(request);
 }

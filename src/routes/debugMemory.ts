@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { searchMemory } from "../domain/memory/service";
-import { MemoryItemType } from "../domain/memory/types";
 
 const DebugMemorySearchSchema = z.object({
   tenantId: z.string(),
@@ -51,7 +50,8 @@ export async function registerDebugMemoryRoutes(app: FastifyInstance) {
         type: r.type,
         content: r.content,
         metadata: r.metadata ?? null,
-        sourceId: r.sourceId ?? null
+        sourceId: r.sourceId ?? null,
+        createdAt: r.createdAt.toISOString()
       }))
     };
   });

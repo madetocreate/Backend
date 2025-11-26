@@ -7,6 +7,7 @@ import { registerIngestDmRoutes } from "./routes/ingestDm";
 import { registerIngestReviewRoutes } from "./routes/ingestReview";
 import { registerDebugModelRoutes } from "./routes/debugModel";
 import { registerDebugMemoryRoutes } from "./routes/debugMemory";
+import { registerOperatorInboxRoutes } from "./routes/operatorInbox";
 
 const app = Fastify({});
 
@@ -39,6 +40,7 @@ app.register(registerIngestDmRoutes);
 app.register(registerIngestReviewRoutes);
 app.register(registerDebugModelRoutes);
 app.register(registerDebugMemoryRoutes);
+app.register(registerOperatorInboxRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");
