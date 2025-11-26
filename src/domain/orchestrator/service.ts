@@ -3,10 +3,8 @@ import { getVectorStoreId } from "../vector/service";
 import { summarizeText } from "./summary";
 import { OrchestratorInput } from "./types-orchestrator";
 import { buildInstructions } from "./instructions";
+import { getChatModel } from "../../config/model";
 
-/**
- * Synchronous response (non-streaming) using the OpenAI Responses API.
- */
 export async function createResponse(input: OrchestratorInput) {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
 
@@ -23,7 +21,7 @@ export async function createResponse(input: OrchestratorInput) {
   const instructions = buildInstructions(input);
 
   const response = await openai.responses.create({
-    model: "gpt-4.1",
+    model: getChatModel(),
     instructions,
     input: [
       {
@@ -46,16 +44,12 @@ export async function createResponse(input: OrchestratorInput) {
   };
 }
 
-/**
- * Streaming response using the OpenAI Responses API.
- * The route is responsible for iterating the stream and emitting SSE chunks.
- */
 export async function createStreamingResponse(input: OrchestratorInput) {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
   const stream = await openai.responses.create({
-    model: "gpt-4.1",
+    model: getChatModel(),
     instructions,
     input: [
       {

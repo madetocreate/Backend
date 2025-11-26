@@ -5,6 +5,7 @@ import { registerChatStreamRoutes } from "./routes/chatStream";
 import { registerIngestEmailRoutes } from "./routes/ingestEmail";
 import { registerIngestDmRoutes } from "./routes/ingestDm";
 import { registerIngestReviewRoutes } from "./routes/ingestReview";
+import { registerDebugModelRoutes } from "./routes/debugModel";
 
 const app = Fastify({});
 
@@ -35,6 +36,7 @@ app.register(registerChatStreamRoutes);
 app.register(registerIngestEmailRoutes);
 app.register(registerIngestDmRoutes);
 app.register(registerIngestReviewRoutes);
+app.register(registerDebugModelRoutes);
 
 app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
   console.log("Server listening");

@@ -12,7 +12,9 @@ const EnvSchema = z.object({
   PORT: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_PROJECT: z.string().optional(),
-  OPENAI_MODEL: z.string().optional()
+  OPENAI_MODEL: z.string().default("gpt-5.1"),
+  OPENAI_FALLBACK_MODEL: z.string().default("gpt-5-mini"),
+  OPENAI_SUMMARY_MODEL: z.string().default("gpt-5-mini")
 });
 
 const parsed = EnvSchema.parse(process.env);
