@@ -1,5 +1,5 @@
 import { openai } from "../../integrations/openai/client";
-import { getChatModel } from "../../config/model";
+import { getSummaryModel } from "../../config/model";
 import { searchMemoryRecords } from "../memory/repository";
 import { MemorySearchResult } from "../memory/types";
 
@@ -55,7 +55,7 @@ Sprache und Stil:
 
 Modus 1: Inbox-Übersicht ("mode": "inbox_overview")
 1. Lies alle Reviews sorgfältig.
-2. Erkenne zentrale Themen und Probleme (z. B. Lieferzeit, Produktqualität, Support-Erreichbarkeit).
+2. Erkenne zentrale Themen und Probleme (z. B. Lieferzeit, Qualität, Support-Erreichbarkeit).
 3. Ordne Reviews grob ein:
    - kritisch/dringend: sehr negative Bewertungen, harte Formulierungen, akute Probleme,
    - wichtig: mittelschlechte Bewertungen mit klaren Hinweisen,
@@ -126,7 +126,7 @@ export async function handleReviewsInbox(input: ReviewsInboxInput): Promise<Revi
   const filtered = filterByRating(items, input.minRating, input.maxRating);
   const system = REVIEWS_AGENT_SYSTEM_PROMPT;
   const response = await openai.responses.create({
-    model: getChatModel(),
+    model: getSummaryModel(),
     instructions: system,
     input: [
       {
@@ -151,7 +151,7 @@ export async function handleReviewsInbox(input: ReviewsInboxInput): Promise<Revi
 export async function handleReviewReply(input: ReviewReplyInput): Promise<ReviewReplyResult> {
   const system = REVIEWS_AGENT_SYSTEM_PROMPT;
   const response = await openai.responses.create({
-    model: getChatModel(),
+    model: getSummaryModel(),
     instructions: system,
     input: [
       {

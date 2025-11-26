@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { openai } from "../../integrations/openai/client";
-import { getChatModel } from "../../config/model";
+import { getSummaryModel } from "../../config/model";
 import { uploadDocumentFileToVectorStores, getVectorStoreId } from "../vector/service";
 import { writeMemory } from "../memory/service";
 
@@ -135,7 +135,7 @@ export async function handleAnalysisUpload(input: AnalysisUploadInput): Promise<
 export async function handleAnalysisQuery(input: AnalysisQueryInput): Promise<AnalysisQueryResult> {
   const vectorStoreId = await getVectorStoreId(input.tenantId);
   const response = await openai.responses.create({
-    model: getChatModel(),
+    model: getSummaryModel(),
     instructions: ANALYSIS_AGENT_SYSTEM_PROMPT,
     input: [
       {

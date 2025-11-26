@@ -1,5 +1,5 @@
 import { openai } from "../../integrations/openai/client";
-import { getChatModel } from "../../config/model";
+import { getSummaryModel } from "../../config/model";
 import { searchMemoryRecords } from "../memory/repository";
 
 export type InboxInput = {
@@ -83,7 +83,7 @@ export async function handleInboxRequest(input: InboxInput) {
   const filtered = items.filter(i => input.types.includes(i.type));
   const system = COMMUNICATIONS_AGENT_SYSTEM_PROMPT;
   const response = await openai.responses.create({
-    model: getChatModel(),
+    model: getSummaryModel(),
     instructions: system,
     input: [
       {
@@ -106,7 +106,7 @@ export async function handleInboxRequest(input: InboxInput) {
 export async function handleReplyRequest(input: ReplyInput) {
   const system = COMMUNICATIONS_AGENT_SYSTEM_PROMPT;
   const response = await openai.responses.create({
-    model: getChatModel(),
+    model: getSummaryModel(),
     instructions: system,
     input: [
       {
