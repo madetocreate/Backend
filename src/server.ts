@@ -40,7 +40,11 @@ app.addContentTypeParser("*", (_req, _body, done) => {
   done(new Error("invalid_content_type"));
 });
 
-app.register(cors);
+app.register(cors, {
+  origin: "http://localhost:3000",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+});
 
 app.get("/health", async () => ({ status: "ok" }));
 
@@ -65,6 +69,8 @@ app.register(registerSocialAgentRoutes);
 app.register(registerResearchAgentRoutes);
 app.register(registerWebshopAgentRoutes);
 
-app.listen({ port: 3000, host: "0.0.0.0" }).then(() => {
-  console.log("Server listening");
+const PORT = Number(process.env.PORT ?? "4000");
+
+app.listen({ port: PORT, host: "0.0.0.0" }).then(() => {
+  console.log(`Server listening on port ${PORT}`);
 });
