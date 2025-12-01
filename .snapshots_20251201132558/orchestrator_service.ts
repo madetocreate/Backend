@@ -9,7 +9,6 @@ import { handleResearchQuery } from "../research/service";
 import { handleAnalysisQuery } from "../analysis/service";
 import { searchVectors } from "../vectorLocal/service";
 import { handleMemoryAgentRequest } from "../memoryAgent/service";
-import { handleSupportAssistantQuery, runSupportSideEffects } from "../support/service";
 import { handleShoppingQuery } from "../shopping/service";
 
 type OrchestratorStep = {
@@ -414,76 +413,6 @@ export async function createResponse(input: OrchestratorInput) {
       steps
     };
   }
-if (tool === "support_chat") {
-  steps.push({
-    id: "prepare_support_chat",
-    label: "Support-Anfrage und Kontext vorbereiten",
-    status: "done"
-  });
-  steps.push({
-    id: "call_support_agent",
-    label: "Support-Agent für Kundenanfragen aufrufen",
-    status: "done"
-  });
-  const messageRaw = (metadata as any).message ?? input.message;
-  const message =
-    typeof messageRaw === "string" && messageRaw.trim().length > 0
-      ? messageRaw
-      : input.message;
-  const result = await handleSupportAssistantQuery({
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    message,
-    metadata: metadata as any
-  });
-  const contentSupport = result.content ?? "";
-  steps.push({
-    id: "store_support_conversation",
-    label: "Support-Konversation im Memory speichern",
-    status: "done"
-  });
-  await writeMemory({
-    tenantId: input.tenantId,
-    type: "conversation_message",
-    content:
-      "User (support_chat): " +
-      message +
-      "\nAssistant (support_answer): " +
-      contentSupport,
-    metadata: {
-      channel: input.channel,
-      sessionId: input.sessionId,
-      mode: (metadata as any).mode ?? "support_chat",
-      tool
-    },
-    conversationId: input.sessionId,
-    createdAt: new Date()
-  });
-  await runSupportSideEffects({
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    userMessage: message,
-    assistantMessage: contentSupport,
-    metadata: metadata as any
-  });
-
-  await runSupportSideEffects({
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    userMessage: message,
-    assistantMessage: contentSupport,
-    metadata: metadata as any
-  });
-
-  return {
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    channel: input.channel,
-    content: contentSupport,
-    steps
-  };
-}
-
 
   if (tool === "analysis_query") {
     steps.push({

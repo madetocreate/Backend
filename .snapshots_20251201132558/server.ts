@@ -14,8 +14,6 @@ import { registerCommunicationsAgentRoutes } from "./routes/communicationsAgent"
 import { registerIngestAudioRoutes } from "./routes/ingestAudio";
 import { registerReviewsAgentRoutes } from "./routes/reviewsAgent";
 import { registerWebsiteAgentRoutes } from "./routes/websiteAgent";
-import { registerSupportAgentRoutes } from "./routes/supportAgent";
-import { registerSupportInboxRoutes } from "./routes/supportInbox";
 import { registerContentAgentRoutes } from "./routes/contentAgent";
 import { registerCalendarAgentRoutes } from "./routes/calendarAgent";
 import { registerMarketingAgentRoutes } from "./routes/marketingAgent";
@@ -72,8 +70,6 @@ app.register(registerCommunicationsAgentRoutes);
 app.register(registerIngestAudioRoutes);
 app.register(registerReviewsAgentRoutes);
 app.register(registerWebsiteAgentRoutes);
-app.register(registerSupportAgentRoutes);
-app.register(registerSupportInboxRoutes);
 app.register(registerWunschkastenAgentRoutes);
 app.register(registerWunschkastenOrderRoutes);
 app.register(registerWunschkastenBlueprintRoutes);

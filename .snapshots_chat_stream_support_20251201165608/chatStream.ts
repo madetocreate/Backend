@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ChatRequestSchema, ChatRequestBody } from "../domain/chat/schema";
 import { createStreamingResponse } from "../domain/orchestrator/service";
-import { createSupportAssistantStream } from "../domain/support/service";
 import { writeSse } from "../http/sse";
 import { writeMemory } from "../domain/memory/service";
 
@@ -18,15 +17,6 @@ type UiStep = {
 function buildUiSteps(input: ChatRequestBody): UiStep[] {
   const metadata = (input.metadata ?? {}) as any;
   const tool = typeof metadata.tool === "string" ? metadata.tool : undefined;
-
-  if (tool === "support_chat") {
-    return [
-      { id: "inspect_metadata", label: "Frage und Modus analysieren", status: "pending" },
-      { id: "prepare_support_chat", label: "Support-Anfrage und Kontext vorbereiten", status: "pending" },
-      { id: "call_support_agent", label: "Support-Agent für Kundenanfragen aufrufen", status: "pending" },
-      { id: "store_support_conversation", label: "Support-Konversation im Memory speichern", status: "pending" }
-    ];
-  }
 
   if (tool === "communications_inbox") {
     return [
@@ -141,16 +131,7 @@ export async function registerChatStreamRoutes(app: FastifyInstance) {
     let firstDeltaSeen = false;
 
     try {
-      const metadata = (input.metadata ?? {}) as any;
-      const tool = typeof metadata.tool === "string" ? metadata.tool : undefined;
-      const stream: AsyncIterable<any> =
-        tool === "support_chat"
-          ? await createSupportAssistantStream({
-              tenantId: input.tenantId,
-              sessionId: input.sessionId,
-              message: input.message
-            })
-          : await createStreamingResponse(input);
+      const stream: AsyncIterable<any> = await createStreamingResponse(input);
 
       for await (const event of stream) {
         if (event.type === "response.output_text.delta") {

@@ -141,8 +141,6 @@ export async function registerChatStreamRoutes(app: FastifyInstance) {
     let firstDeltaSeen = false;
 
     try {
-      const metadata = (input.metadata ?? {}) as any;
-      const tool = typeof metadata.tool === "string" ? metadata.tool : undefined;
       const stream: AsyncIterable<any> =
         tool === "support_chat"
           ? await createSupportAssistantStream({

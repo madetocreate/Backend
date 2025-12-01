@@ -9,7 +9,7 @@ import { handleResearchQuery } from "../research/service";
 import { handleAnalysisQuery } from "../analysis/service";
 import { searchVectors } from "../vectorLocal/service";
 import { handleMemoryAgentRequest } from "../memoryAgent/service";
-import { handleSupportAssistantQuery, runSupportSideEffects } from "../support/service";
+import { handleSupportAssistantQuery } from "../support/service";
 import { handleShoppingQuery } from "../shopping/service";
 
 type OrchestratorStep = {
@@ -433,8 +433,7 @@ if (tool === "support_chat") {
   const result = await handleSupportAssistantQuery({
     tenantId: input.tenantId,
     sessionId: input.sessionId,
-    message,
-    metadata: metadata as any
+    message
   });
   const contentSupport = result.content ?? "";
   steps.push({
@@ -459,22 +458,6 @@ if (tool === "support_chat") {
     conversationId: input.sessionId,
     createdAt: new Date()
   });
-  await runSupportSideEffects({
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    userMessage: message,
-    assistantMessage: contentSupport,
-    metadata: metadata as any
-  });
-
-  await runSupportSideEffects({
-    tenantId: input.tenantId,
-    sessionId: input.sessionId,
-    userMessage: message,
-    assistantMessage: contentSupport,
-    metadata: metadata as any
-  });
-
   return {
     tenantId: input.tenantId,
     sessionId: input.sessionId,

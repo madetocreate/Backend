@@ -65,7 +65,6 @@ export function buildGlobalInstructions(): string {
     "- Analysis Agent: focuses on deeper analysis of documents, tables and business data.",
     "- Calendar Agent: helps with availability, time blocking and simple planning questions.",
     "- Content / Image Agent: generates images and visual assets for campaigns.",
-    "- Support Agent: handles live customer support chats based on tenant data and business memory.",
     "",
     "Your direct low-level tools are limited:",
     "- internal_vector_search: to retrieve relevant information from the tenant's business memory and documents.",
