@@ -1,6 +1,5 @@
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
-import { searchVectors } from "../vectorLocal/service";
 
 export type WebsiteAssistantQueryInput = {
   tenantId: string;
@@ -14,20 +13,6 @@ export type WebsiteAssistantQueryResult = {
   sessionId: string;
   channel: "agent_website";
   content: string | null;
-};
-
-type WebsiteContextSnippet = {
-  id: string;
-  domain: string;
-  content: string;
-  score: number;
-  sourceId: string;
-  metadata?: any;
-};
-
-type WebsiteChatInputMessage = {
-  role: "system" | "user";
-  content: string;
 };
 
 const WEBSITE_AGENT_SYSTEM_PROMPT = `
@@ -62,7 +47,7 @@ Sprache und Stil:
 - Antworte in der Sprache des Nutzers (bei deutschsprachigem Kontext: Deutsch).
 - Ton: klar, freundlich, kompetent, gut gelaunt – aber nicht albern.
 - Du darfst durchaus proaktiv und motivierend klingen („Das passt gut zu euch, weil …“), ohne in leere Marketing-Floskeln zu verfallen.
-- Wenn in den Unterlagen ein bestimmten Ton oder eine bestimmte „Stimme“ beschrieben ist, orientiere dich daran.
+- Wenn in den Unterlagen ein bestimmter Ton oder eine bestimmte „Stimme“ beschrieben ist, orientiere dich daran.
 
 Interaktion mit Besuchern:
 - Versuche zuerst zu verstehen, wer der Mensch ungefähr ist und was er will:
@@ -96,127 +81,21 @@ Du sollst Besucherinnen und Besucher so abholen, dass sie:
 - merken, dass hier ein durchdachtes, memory-basiertes System am Werk ist – kein einfacher Standard-Chat.
 `;
 
-async function buildWebsiteBusinessContext(
-  input: WebsiteAssistantQueryInput
-): Promise<string | null> {
-  const domains: ("business_profile" | "documents" | "emails" | "reviews")[] = [
-    "business_profile",
-    "documents",
-    "emails",
-    "reviews"
-  ];
-
-  const snippets: WebsiteContextSnippet[] = [];
-  const query =
-    typeof input.focus === "string" && input.focus.trim().length > 0
-      ? input.focus.trim() + " " + input.message
-      : input.message;
-
-  for (const domain of domains) {
-    try {
-      const results = await searchVectors({
-        tenantId: input.tenantId,
-        domain,
-        query,
-        topK: 4,
-        minScore: 0.25
-      });
-
-      for (const r of results) {
-        const meta =
-          r.metadata && typeof r.metadata === "object"
-            ? (r.metadata as any)
-            : undefined;
-
-        snippets.push({
-          id: r.id,
-          domain: r.domain,
-          content: r.content,
-          score: r.score,
-          sourceId: r.sourceId,
-          metadata: meta
-        });
-      }
-    } catch (e) {
-    }
-  }
-
-  if (snippets.length === 0) {
-    return null;
-  }
-
-  const lines: string[] = [];
-  lines.push(
-    "Interne Website- und Business-Inhalte zu diesem Tenant (aus dem Memory):"
-  );
-
-  for (const s of snippets) {
-    const headerParts: string[] = [];
-    headerParts.push("Domain: " + s.domain);
-    headerParts.push("Score: " + s.score.toFixed(3));
-    headerParts.push("SourceId: " + s.sourceId);
-    const header = headerParts.join(" | ");
-
-    let metaText = "";
-    if (s.metadata && typeof s.metadata === "object") {
-      const keys = Object.keys(s.metadata).slice(0, 5);
-      if (keys.length > 0) {
-        const kv = keys
-          .map((k) => {
-            const v = (s.metadata as any)[k];
-            const vs =
-              v === null || v === undefined ? "" : String(v).slice(0, 80);
-            return k + ": " + vs;
-          })
-          .join(", ");
-        metaText = "Metadaten: " + kv;
-      }
-    }
-
-    const blockLines: string[] = [];
-    blockLines.push(header);
-    if (metaText) {
-      blockLines.push(metaText);
-    }
-    blockLines.push("");
-    blockLines.push(s.content);
-
-    lines.push(blockLines.join("\n"));
-  }
-
-  return lines.join("\n\n---\n\n");
-}
-
-export async function handleWebsiteAssistantQuery(
-  input: WebsiteAssistantQueryInput
-): Promise<WebsiteAssistantQueryResult> {
-  const contextText = await buildWebsiteBusinessContext(input);
-
-  const inputMessages: WebsiteChatInputMessage[] = [];
-
-  if (contextText && contextText.trim().length > 0) {
-    inputMessages.push({
-      role: "system",
-      content:
-        "Kontext aus der internen Wissensbasis dieses Tenants (Business-Memory, Dokumente, E-Mails, Reviews):\n\n" +
-        contextText
-    });
-  }
-
-  inputMessages.push({
-    role: "user",
-    content: JSON.stringify({
-      tenantId: input.tenantId,
-      sessionId: input.sessionId,
-      message: input.message,
-      focus: input.focus ?? null
-    })
-  });
-
+export async function handleWebsiteAssistantQuery(input: WebsiteAssistantQueryInput): Promise<WebsiteAssistantQueryResult> {
   const response = await openai.responses.create({
     model: getSummaryModel(),
     instructions: WEBSITE_AGENT_SYSTEM_PROMPT,
-    input: inputMessages
+    input: [
+      {
+        role: "user",
+        content: JSON.stringify({
+          tenantId: input.tenantId,
+          sessionId: input.sessionId,
+          message: input.message,
+          focus: input.focus ?? null
+        })
+      }
+    ]
   });
 
   const content =
@@ -235,33 +114,20 @@ export async function handleWebsiteAssistantQuery(
 export async function createWebsiteAssistantStream(
   input: WebsiteAssistantQueryInput
 ): Promise<AsyncIterable<any>> {
-  const contextText = await buildWebsiteBusinessContext(input);
-
-  const inputMessages: WebsiteChatInputMessage[] = [];
-
-  if (contextText && contextText.trim().length > 0) {
-    inputMessages.push({
-      role: "system",
-      content:
-        "Kontext aus der internen Wissensbasis dieses Tenants (Business-Memory, Dokumente, E-Mails, Reviews):\n\n" +
-        contextText
-    });
-  }
-
-  inputMessages.push({
-    role: "user",
-    content: JSON.stringify({
-      tenantId: input.tenantId,
-      sessionId: input.sessionId,
-      message: input.message,
-      focus: input.focus ?? null
-    })
-  });
-
   const stream = await openai.responses.create({
     model: getSummaryModel(),
     instructions: WEBSITE_AGENT_SYSTEM_PROMPT,
-    input: inputMessages,
+    input: [
+      {
+        role: "user",
+        content: JSON.stringify({
+          tenantId: input.tenantId,
+          sessionId: input.sessionId,
+          message: input.message,
+          focus: input.focus ?? null
+        })
+      }
+    ],
     stream: true
   });
 

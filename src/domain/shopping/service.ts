@@ -385,8 +385,8 @@ export async function runShoppingProductAgent(
     query += ", " + qualifiers.join(", ");
   }
 
-  const pricingModule: any = require("./pricing");
-  const runShoppingProductResearch = pricingModule.runShoppingProductResearch as (
+  const productResearchModule: any = require("./productResearch");
+  const runShoppingProductResearch = productResearchModule.runShoppingProductResearch as (
     args: {
       tenantId: string;
       sessionId: string;

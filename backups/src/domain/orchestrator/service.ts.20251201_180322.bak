@@ -467,6 +467,14 @@ if (tool === "support_chat") {
     metadata: metadata as any
   });
 
+  await runSupportSideEffects({
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    userMessage: message,
+    assistantMessage: contentSupport,
+    metadata: metadata as any
+  });
+
   return {
     tenantId: input.tenantId,
     sessionId: input.sessionId,
