@@ -1,9 +1,0 @@
-./.DS_Store
-./frontend/.DS_Store
-./frontend/src/.DS_Store
-./node_modules/.DS_Store
-./src/.DS_Store
-./src/greeting-manager/greetingManager.ts.20251201-010809.bak
-./src/greeting-manager/greetingManager.ts.20251201-012113.bak
-./src/greeting-manager/externalDemoDeps.ts.20251201-020300.bak
-./src/greeting-manager/newsFetcher.ts.20251201-013730.bak
