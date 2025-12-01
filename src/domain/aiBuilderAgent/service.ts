@@ -4,9 +4,9 @@ import { getSummaryModel } from "../../config/model";
 import { recordUsageEvent } from "../usage/service";
 import type { UsageEventType } from "../usage/types";
 import {
-  WunschkastenStepInput,
-  WunschkastenStepResponse,
-  WunschkastenSessionState,
+  AiBuilderAgentStepInput,
+  AiBuilderAgentStepResponse,
+  AiBuilderAgentSessionState,
   SuggestionPill,
   SuggestionCard,
   OfferPreview,
@@ -39,7 +39,7 @@ type ModelOffer = {
   metadata?: Record<string, unknown>;
 };
 
-type ModelStateDelta = Partial<WunschkastenSessionState>;
+type ModelStateDelta = Partial<AiBuilderAgentSessionState>;
 
 type ModelResponse = {
   message?: string;
@@ -49,7 +49,7 @@ type ModelResponse = {
   updatedState?: ModelStateDelta;
 };
 
-function isFirstStep(state: WunschkastenSessionState | undefined): boolean {
+function isFirstStep(state: AiBuilderAgentSessionState | undefined): boolean {
   if (!state) {
     return true;
   }
@@ -62,7 +62,7 @@ function isFirstStep(state: WunschkastenSessionState | undefined): boolean {
   return !hasTrack && !hasAudience && !hasGoals && !hasPlatforms;
 }
 
-function buildStaticPills(input: WunschkastenStepInput): SuggestionPill[] {
+function buildStaticPills(input: AiBuilderAgentStepInput): SuggestionPill[] {
   const pills: SuggestionPill[] = [];
 
   const first = isFirstStep(input.state);
@@ -123,7 +123,7 @@ function buildStaticPills(input: WunschkastenStepInput): SuggestionPill[] {
   return pills;
 }
 
-function buildStaticCards(state: WunschkastenSessionState | undefined): SuggestionCard[] {
+function buildStaticCards(state: AiBuilderAgentSessionState | undefined): SuggestionCard[] {
   const first = isFirstStep(state);
 
   if (!first) {
@@ -184,10 +184,10 @@ function buildStaticCards(state: WunschkastenSessionState | undefined): Suggesti
 }
 
 function mergeState(
-  input: WunschkastenStepInput,
+  input: AiBuilderAgentStepInput,
   delta: ModelStateDelta | undefined
-): WunschkastenSessionState {
-  const base: WunschkastenSessionState =
+): AiBuilderAgentSessionState {
+  const base: AiBuilderAgentSessionState =
     input.state ?? {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
@@ -198,7 +198,7 @@ function mergeState(
       metadata: {},
     };
 
-  const merged: WunschkastenSessionState = {
+  const merged: AiBuilderAgentSessionState = {
     ...base,
     ...delta,
     tenantId: input.tenantId,
@@ -303,9 +303,9 @@ function toOffers(modelOffers: ModelOffer[] | undefined): OfferPreview[] | undef
   return offers;
 }
 
-export async function handleWunschkastenStep(
-  input: WunschkastenStepInput
-): Promise<WunschkastenStepResponse> {
+export async function handleAiBuilderAgentStep(
+  input: AiBuilderAgentStepInput
+): Promise<AiBuilderAgentStepResponse> {
   const model = getSummaryModel();
 
   const staticPills = buildStaticPills(input);
@@ -334,7 +334,7 @@ export async function handleWunschkastenStep(
           {
             type: "input_text",
             text: JSON.stringify({
-              kind: "wunschkasten_step",
+              kind: "aiBuilderAgent_step",
               input,
               staticPills,
               staticCards,
@@ -411,7 +411,7 @@ export async function handleWunschkastenStep(
     }
   }
 
-  const result: WunschkastenStepResponse = {
+  const result: AiBuilderAgentStepResponse = {
     tenantId: input.tenantId,
     sessionId: input.sessionId,
     channel: input.channel,
@@ -426,12 +426,12 @@ export async function handleWunschkastenStep(
   };
 
   const now = new Date();
-  const usageType: UsageEventType = "wunschkasten_step" as UsageEventType;
+  const usageType: UsageEventType = "aiBuilderAgent_step" as UsageEventType;
 
   await recordUsageEvent({
     tenantId: input.tenantId,
     type: usageType,
-    route: "/agent/wunschkasten/step",
+    route: "/agent/aiBuilderAgent/step",
     timestamp: now,
     metadata: {
       action: input.action,

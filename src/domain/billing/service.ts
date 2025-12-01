@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { db } from "../../infra/db";
-import { ModuleId } from "./types";
+import { ModuleId, PlanId } from "./types";
+import { getModulesForPlan } from "./plans";
 
 export type SubscriptionStatus = "active" | "trialing" | "canceled";
 
@@ -100,3 +101,37 @@ export function isModuleEnabled(tenantId: string, moduleKey: ModuleId): boolean 
   }
   return row.status === "active";
 }
+export function applyStripeCheckoutSession(input: {
+  tenantId: string;
+  planId: PlanId;
+  status?: SubscriptionStatus;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+}) {
+  const now = new Date().toISOString();
+  const status: SubscriptionStatus = input.status ?? "active";
+
+  ensureTenantRow(input.tenantId, null);
+
+  const subscriptionId = randomUUID();
+  db.prepare(
+    "INSERT INTO subscriptions (id, tenant_id, status, stripe_customer_id, stripe_subscription_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    subscriptionId,
+    input.tenantId,
+    status,
+    input.stripeCustomerId ?? null,
+    input.stripeSubscriptionId ?? null,
+    now,
+    now
+  );
+
+  const modules = getModulesForPlan(input.planId);
+  const stmtModule = db.prepare(
+    "INSERT INTO subscription_modules (id, tenant_id, module_key, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  for (const m of modules) {
+    stmtModule.run(randomUUID(), input.tenantId, m.id, status, now, now);
+  }
+}
+

@@ -242,14 +242,14 @@ export async function createResponse(input: OrchestratorInput) {
 
   steps.push({
     id: "inspect_metadata",
-    label: "Modus und Tool aus Metadaten bestimmen",
+    label: "Determine mode and tool from metadata",
     status: "done"
   });
 
   if (metadata.summarize) {
     steps.push({
       id: "summarize_text",
-      label: "Text zusammenfassen",
+      label: "Summarize text",
       status: "done"
     });
 
@@ -268,12 +268,12 @@ export async function createResponse(input: OrchestratorInput) {
   if (tool === "communications_inbox") {
     steps.push({
       id: "load_inbox_memory",
-      label: "Memory nach Kommunikations-Nachrichten durchsuchen",
+      label: "Scan memory for communication messages",
       status: "done"
     });
     steps.push({
       id: "call_communications_inbox_agent",
-      label: "Communications-Agent für Inbox-Übersicht aufrufen",
+      label: "Call communications agent for inbox overview",
       status: "done"
     });
 
@@ -300,7 +300,7 @@ export async function createResponse(input: OrchestratorInput) {
 
     steps.push({
       id: "store_inbox_summary_memory",
-      label: "Inbox-Zusammenfassung im Memory speichern",
+      label: "Store inbox summary in memory",
       status: "done",
       details: "conversation_message"
     });
@@ -337,12 +337,12 @@ export async function createResponse(input: OrchestratorInput) {
   if (tool === "communications_reply") {
     steps.push({
       id: "prepare_reply_context",
-      label: "Nachrichtentyp, Original-Nachricht und Tonalität vorbereiten",
+      label: "Prepare reply context (message type, original message, tone)",
       status: "done"
     });
     steps.push({
       id: "call_communications_reply_agent",
-      label: "Communications-Agent für Antwortvorschläge aufrufen",
+      label: "Call communications agent for reply suggestions",
       status: "done"
     });
 
@@ -379,7 +379,7 @@ export async function createResponse(input: OrchestratorInput) {
 
     steps.push({
       id: "store_reply_suggestions_memory",
-      label: "Antwortvorschläge im Memory speichern",
+      label: "Store reply suggestions in memory",
       status: "done",
       details: "conversation_message"
     });
@@ -417,12 +417,12 @@ export async function createResponse(input: OrchestratorInput) {
 if (tool === "support_chat") {
   steps.push({
     id: "prepare_support_chat",
-    label: "Support-Anfrage und Kontext vorbereiten",
+    label: "Prepare support chat request and context",
     status: "done"
   });
   steps.push({
     id: "call_support_agent",
-    label: "Support-Agent für Kundenanfragen aufrufen",
+    label: "Call support agent for customer requests",
     status: "done"
   });
   const messageRaw = (metadata as any).message ?? input.message;
@@ -439,7 +439,7 @@ if (tool === "support_chat") {
   const contentSupport = result.content ?? "";
   steps.push({
     id: "store_support_conversation",
-    label: "Support-Konversation im Memory speichern",
+    label: "Store support conversation in memory",
     status: "done"
   });
   await writeMemory({
@@ -480,12 +480,12 @@ if (tool === "support_chat") {
   if (tool === "analysis_query") {
     steps.push({
       id: "prepare_analysis_query",
-      label: "Analyse-Frage und Kontext vorbereiten",
+      label: "Prepare analysis query and context",
       status: "done"
     });
     steps.push({
       id: "call_analysis_agent",
-      label: "Analyse-Agent für Dokumentauswertung aufrufen",
+      label: "Call analysis agent for document evaluation",
       status: "done"
     });
 
@@ -505,7 +505,7 @@ if (tool === "support_chat") {
 
     steps.push({
       id: "store_analysis_memory",
-      label: "Analyse-Ergebnis im Memory speichern",
+      label: "Store analysis result in memory",
       status: "done",
       details: "conversation_message"
     });
@@ -542,12 +542,12 @@ if (tool === "support_chat") {
   if (tool === "research_query") {
     steps.push({
       id: "prepare_research_question",
-      label: "Research-Frage, Scope und Limits vorbereiten",
+      label: "Prepare research question, scope and limits",
       status: "done"
     });
     steps.push({
       id: "call_research_agent",
-      label: "Research-Agent mit Websuche und optionalem Business-Memory aufrufen",
+      label: "Call research agent (web search and optional business memory)",
       status: "done"
     });
 
@@ -602,7 +602,7 @@ if (tool === "support_chat") {
 
     steps.push({
       id: "store_research_memory",
-      label: "Research-Ergebnis mit Quellen im Memory speichern",
+      label: "Store research result with sources in memory",
       status: "done",
       details: "conversation_message"
     });
@@ -643,12 +643,12 @@ if (tool === "support_chat") {
   if (tool === "shopping_query") {
     steps.push({
       id: "prepare_shopping_query",
-      label: "Shopping-Anfrage und Präferenzen vorbereiten",
+      label: "Prepare shopping query and preferences",
       status: "done"
     });
     steps.push({
       id: "call_shopping_agent",
-      label: "Shopping-Agent für Einkaufsplan aufrufen",
+      label: "Call shopping agent for shopping plan",
       status: "done"
     });
 
@@ -687,7 +687,7 @@ if (tool === "support_chat") {
 
     steps.push({
       id: "store_shopping_memory",
-      label: "Shopping-Ergebnis im Memory speichern",
+      label: "Store shopping result in memory",
       status: "done",
       details: "conversation_message"
     });
@@ -725,7 +725,7 @@ if (tool === "support_chat") {
   if (tool === "memory_manage") {
     steps.push({
       id: "prepare_memory_agent_operations",
-      label: "Memory-Agent-Operationen vorbereiten",
+      label: "Prepare memory agent operations",
       status: "done"
     });
     const operationsRaw =
@@ -745,7 +745,7 @@ if (tool === "support_chat") {
 
     steps.push({
       id: "call_memory_agent",
-      label: "Memory-Agent zum Lesen/Schreiben/Löschen aufrufen",
+      label: "Call memory agent for read/write/delete operations",
       status: "done"
     });
 
@@ -868,7 +868,7 @@ if (tool === "support_chat") {
 
   steps.push({
     id: "prepare_vector_and_instructions",
-    label: "Business-Memory laden und Orchestrator-Instruktionen bauen",
+    label: "Load business memory and build orchestrator instructions",
     status: "done"
   });
 
@@ -876,7 +876,7 @@ if (tool === "support_chat") {
 
   steps.push({
     id: "call_orchestrator_model",
-    label: "Orchestrator-Modell aufrufen (mit Business-Memory-Kontext)",
+    label: "Call orchestrator model (with business memory context)",
     status: "done"
   });
 
@@ -900,7 +900,7 @@ if (tool === "support_chat") {
 
   steps.push({
     id: "store_general_chat_memory",
-    label: "Antwort als Konversations-Memory speichern",
+    label: "Store answer as conversation memory",
     status: "done",
     details: "conversation_message"
   });

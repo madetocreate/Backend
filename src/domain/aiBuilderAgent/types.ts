@@ -4,7 +4,7 @@ export type WunschTrack = "marketing" | "automation" | "fun" | "custom";
 
 export type AudienceType = "business" | "private" | "mixed";
 
-export type WunschkastenSessionState = {
+export type AiBuilderAgentSessionState = {
   tenantId: TenantId;
   sessionId: string;
   track?: WunschTrack;
@@ -14,17 +14,17 @@ export type WunschkastenSessionState = {
   metadata?: Record<string, unknown>;
 };
 
-export type WunschkastenStepActionKind = "message" | "pill" | "card";
+export type AiBuilderAgentStepActionKind = "message" | "pill" | "card";
 
-export type WunschkastenStepInput = {
+export type AiBuilderAgentStepInput = {
   tenantId: TenantId;
   sessionId: string;
   channel: Channel;
-  action: WunschkastenStepActionKind;
+  action: AiBuilderAgentStepActionKind;
   message?: string;
   selectedPillId?: string;
   selectedCardId?: string;
-  state?: WunschkastenSessionState;
+  state?: AiBuilderAgentSessionState;
   metadata?: Record<string, unknown>;
 };
 
@@ -96,12 +96,12 @@ export type AutomationBlueprint = {
   metadata?: Record<string, unknown>;
 };
 
-export type WunschkastenStepResponse = {
+export type AiBuilderAgentStepResponse = {
   tenantId: TenantId;
   sessionId: string;
   channel: Channel;
   message: string;
-  state: WunschkastenSessionState;
+  state: AiBuilderAgentSessionState;
   pills: SuggestionPill[];
   cards: SuggestionCard[];
   offers?: OfferPreview[];
@@ -130,7 +130,7 @@ export type WunschOrder = {
   blueprint?: AutomationBlueprint;
   researchSummary?: string;
   analysisSummary?: string;
-  stateSnapshot?: WunschkastenSessionState;
+  stateSnapshot?: AiBuilderAgentSessionState;
   status: WunschOrderStatus;
   createdAt: string;
   updatedAt: string;
@@ -144,7 +144,7 @@ export type CreateWunschOrderInput = {
   track?: WunschTrack;
   offer: OfferPreview;
   blueprintSummary?: string;
-  stateSnapshot?: WunschkastenSessionState;
+  stateSnapshot?: AiBuilderAgentSessionState;
   blueprint?: AutomationBlueprint;
   metadata?: Record<string, unknown>;
 };
@@ -154,7 +154,7 @@ export type CreateBlueprintInput = {
   sessionId: string;
   channel: Channel;
   idea?: string;
-  state?: WunschkastenSessionState;
+  state?: AiBuilderAgentSessionState;
 };
 
 export type CreateBlueprintResult = {

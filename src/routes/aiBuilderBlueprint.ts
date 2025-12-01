@@ -1,11 +1,11 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { handleWunschkastenStep } from "../domain/wunschkasten/service";
+import { createBlueprintForKasten } from "../domain/aiBuilderAgent/blueprintService";
 
 const TrackEnum = z.enum(["marketing", "automation", "fun", "custom"]);
 const AudienceEnum = z.enum(["business", "private", "mixed"]);
 
-const WunschkastenStateSchema = z.object({
+const StateSchema = z.object({
   track: TrackEnum.optional(),
   audience: AudienceEnum.optional(),
   goals: z.array(z.string()).optional(),
@@ -13,39 +13,36 @@ const WunschkastenStateSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-const WunschkastenBodySchema = z.object({
+const BodySchema = z.object({
   tenantId: z.string().min(1),
   sessionId: z.string().min(1),
   channel: z.string().optional(),
-  action: z.enum(["message", "pill", "card"]),
-  message: z.string().optional(),
-  selectedPillId: z.string().optional(),
-  selectedCardId: z.string().optional(),
-  state: WunschkastenStateSchema.optional(),
+  idea: z.string().optional(),
+  state: StateSchema.optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 
-export async function registerWunschkastenAgentRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/agent/wunschkasten/step", async (request, reply) => {
-    const parseResult = WunschkastenBodySchema.safeParse(request.body);
-    if (!parseResult.success) {
+export async function registerAiBuilderBlueprintRoutes(
+  app: FastifyInstance
+): Promise<void> {
+  app.post("/agent/ai_builder_agent/blueprint", async (request, reply) => {
+    const parsed = BodySchema.safeParse(request.body);
+
+    if (!parsed.success) {
       reply.status(400);
       return {
         error: "Invalid request body",
-        details: parseResult.error.flatten(),
+        details: parsed.error.flatten(),
       };
     }
 
-    const body = parseResult.data;
+    const body = parsed.data;
 
-    const result = await handleWunschkastenStep({
+    const result = await createBlueprintForKasten({
       tenantId: body.tenantId as any,
       sessionId: body.sessionId,
-      channel: body.channel ?? "app",
-      action: body.action,
-      message: body.message,
-      selectedPillId: body.selectedPillId,
-      selectedCardId: body.selectedCardId,
+      channel: (body.channel ?? "app") as any,
+      idea: body.idea,
       state: body.state
         ? {
             tenantId: body.tenantId as any,
@@ -57,7 +54,6 @@ export async function registerWunschkastenAgentRoutes(app: FastifyInstance): Pro
             metadata: body.state.metadata,
           }
         : undefined,
-      metadata: body.metadata,
     });
 
     return result;

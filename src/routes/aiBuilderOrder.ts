@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { createWunschOrder } from "../domain/wunschkasten/orderService";
+import { createWunschOrder } from "../domain/aiBuilderAgent/orderService";
 
 const TrackEnum = z.enum(["marketing", "automation", "fun", "custom"]);
 const AudienceEnum = z.enum(["business", "private", "mixed"]);
@@ -72,10 +72,10 @@ const OrderBodySchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-export async function registerWunschkastenOrderRoutes(
+export async function registerAiBuilderOrderRoutes(
   app: FastifyInstance
 ): Promise<void> {
-  app.post("/agent/wunschkasten/order", async (request, reply) => {
+  app.post("/agent/ai_builder_agent/order", async (request, reply) => {
     const parsed = OrderBodySchema.safeParse(request.body);
 
     if (!parsed.success) {

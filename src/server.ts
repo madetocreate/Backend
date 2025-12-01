@@ -25,9 +25,9 @@ import { registerWebshopAgentRoutes } from "./routes/webshopAgent";
 import { registerSearchRoutes } from "./routes/search";
 import { registerMemoryAdminRoutes } from "./routes/memoryAdmin";
 import { registerMemoryAgentRoutes } from "./routes/memoryAgent";
-import { registerWunschkastenAgentRoutes } from "./routes/wunschkastenAgent";
-import { registerWunschkastenOrderRoutes } from "./routes/wunschkastenOrder";
-import { registerWunschkastenBlueprintRoutes } from "./routes/wunschkastenBlueprint";
+import { registerAiBuilderAgentRoutes } from "./routes/aiBuilderAgent";
+import { registerAiBuilderOrderRoutes } from "./routes/aiBuilderOrder";
+import { registerAiBuilderBlueprintRoutes } from "./routes/aiBuilderBlueprint";
 
 const app = Fastify({
   bodyLimit: 10 * 1024 * 1024
@@ -74,9 +74,9 @@ app.register(registerReviewsAgentRoutes);
 app.register(registerWebsiteAgentRoutes);
 app.register(registerSupportAgentRoutes);
 app.register(registerSupportInboxRoutes);
-app.register(registerWunschkastenAgentRoutes);
-app.register(registerWunschkastenOrderRoutes);
-app.register(registerWunschkastenBlueprintRoutes);
+app.register(registerAiBuilderAgentRoutes);
+app.register(registerAiBuilderOrderRoutes);
+app.register(registerAiBuilderBlueprintRoutes);
 app.register(registerContentAgentRoutes);
 app.register(registerCalendarAgentRoutes);
 app.register(registerMarketingAgentRoutes);

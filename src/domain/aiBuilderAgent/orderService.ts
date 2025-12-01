@@ -79,12 +79,12 @@ export async function createWunschOrder(
   await fs.mkdir(ORDERS_DIR, { recursive: true });
   await fs.appendFile(ORDERS_FILE, JSON.stringify(order) + "\n", "utf8");
 
-  const usageType: UsageEventType = "wunschkasten_order" as UsageEventType;
+  const usageType: UsageEventType = "aiBuilderAgent_order" as UsageEventType;
 
   await recordUsageEvent({
     tenantId: input.tenantId,
     type: usageType,
-    route: "/agent/wunschkasten/order",
+    route: "/agent/aiBuilderAgent/order",
     timestamp: new Date(),
     metadata: {
       track: order.track ?? null,

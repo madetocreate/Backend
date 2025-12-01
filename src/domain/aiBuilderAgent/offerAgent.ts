@@ -3,7 +3,7 @@ import {
   OfferPreview,
   WunschTrack,
   AudienceType,
-  WunschkastenSessionState,
+  AiBuilderAgentSessionState,
 } from "./types";
 
 type SimpleContext = {
@@ -124,7 +124,7 @@ function genericOffers(ctx: SimpleContext): OfferPreview[] {
   ];
 }
 
-export function generateOffersForState(state: WunschkastenSessionState): OfferPreview[] {
+export function generateOffersForState(state: AiBuilderAgentSessionState): OfferPreview[] {
   const ctx: SimpleContext = {
     track: state.track,
     audience: state.audience,

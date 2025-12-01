@@ -37,7 +37,11 @@ const EnvSchema = z.object({
   OPENAI_PROJECT: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-5.1"),
   OPENAI_FALLBACK_MODEL: z.string().default("gpt-5-mini"),
-  OPENAI_SUMMARY_MODEL: z.string().default("gpt-5-mini")
+  OPENAI_SUMMARY_MODEL: z.string().default("gpt-5-mini"),
+  AUTH_SECRET: z.string().optional(),
+  AUTH_ALLOW_INSECURE_TOKENS: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional()
 });
 
 const parsed = EnvSchema.parse(process.env);

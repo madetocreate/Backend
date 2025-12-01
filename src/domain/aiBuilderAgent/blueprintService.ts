@@ -54,7 +54,7 @@ export async function createBlueprintForKasten(
   }
 
   const payload = {
-    kind: "wunschkasten_blueprint",
+    kind: "aiBuilderAgent_blueprint",
     idea: input.idea ?? null,
     state: input.state ?? null,
     researchSummary,
@@ -65,7 +65,7 @@ export async function createBlueprintForKasten(
     model,
     instructions:
       "Du bist der Blueprint-Agent für den AI-Kasten von Aklow. " +
-      "Du bekommst den aktuellen Wunschkasten-Status, eine Wunschbeschreibung (idea), " +
+      "Du bekommst den aktuellen AiBuilderAgent-Status, eine Wunschbeschreibung (idea), " +
       "sowie kurze Zusammenfassungen aus Research- und Analyse-Agent. " +
       "Deine Aufgabe ist es, einen klaren Automations-Blueprint zu erstellen. " +
       "Gib NUR minifizierte JSON-Antwort im folgenden Schema zurück: " +
@@ -254,12 +254,12 @@ export async function createBlueprintForKasten(
     analysisSummary: analysisSummary || undefined,
   };
 
-  const usageType: UsageEventType = "wunschkasten_blueprint" as UsageEventType;
+  const usageType: UsageEventType = "aiBuilderAgent_blueprint" as UsageEventType;
 
   await recordUsageEvent({
     tenantId: input.tenantId,
     type: usageType,
-    route: "/agent/wunschkasten/blueprint",
+    route: "/agent/aiBuilderAgent/blueprint",
     timestamp: new Date(),
     metadata: {
       track: input.state?.track ?? null,
