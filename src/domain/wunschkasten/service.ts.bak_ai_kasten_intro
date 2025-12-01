@@ -1,0 +1,348 @@
+import { randomUUID } from "crypto";
+import { openai } from "../../integrations/openai/client";
+import { getSummaryModel } from "../../config/model";
+import { recordUsageEvent } from "../usage/service";
+import type { UsageEventType } from "../usage/types";
+import {
+  WunschkastenStepInput,
+  WunschkastenStepResponse,
+  WunschkastenSessionState,
+  SuggestionPill,
+  SuggestionCard,
+  OfferPreview,
+  WunschTrack,
+} from "./types";
+
+type ModelPill = {
+  id?: string;
+  label?: string;
+  intent?: string;
+};
+
+type ModelCard = {
+  id?: string;
+  title?: string;
+  subtitle?: string;
+  bullets?: string[];
+  track?: WunschTrack;
+};
+
+type ModelOffer = {
+  id?: string;
+  title?: string;
+  description?: string;
+  priceHint?: string;
+  deliveryTimeHint?: string;
+  tier?: "low" | "medium" | "high";
+  metadata?: Record<string, unknown>;
+};
+
+type ModelStateDelta = Partial<WunschkastenSessionState>;
+
+type ModelResponse = {
+  message?: string;
+  dynamicPills?: ModelPill[];
+  cards?: ModelCard[];
+  offers?: ModelOffer[];
+  updatedState?: ModelStateDelta;
+};
+
+function buildStaticPills(input: WunschkastenStepInput): SuggestionPill[] {
+  const pills: SuggestionPill[] = [];
+
+  pills.push({
+    id: "static_goal_never_forget_messages",
+    label: "Ich will nie wieder wichtige Nachrichten vergessen",
+    intent: "goal_never_forget_messages",
+    source: "static",
+  });
+
+  pills.push({
+    id: "static_goal_daily_organization",
+    label: "Ich will meinen Alltag sortieren",
+    intent: "goal_daily_organization",
+    source: "static",
+  });
+
+  pills.push({
+    id: "static_goal_more_leads",
+    label: "Ich will mehr Kunden & Anfragen",
+    intent: "goal_more_leads",
+    source: "static",
+  });
+
+  pills.push({
+    id: "static_goal_fun_experiments",
+    label: "Ich will einfach rumspielen",
+    intent: "goal_fun_experiments",
+    source: "static",
+  });
+
+  return pills;
+}
+
+function buildStaticCards(state: WunschkastenSessionState | undefined): SuggestionCard[] {
+  const isFirstStep =
+    !state ||
+    (!state.track &&
+      (!state.goals || state.goals.length === 0) &&
+      (!state.platforms || state.platforms.length === 0));
+
+  if (!isFirstStep) {
+    return [];
+  }
+
+  const cards: SuggestionCard[] = [];
+
+  cards.push({
+    id: "track_marketing",
+    title: "Marketing & Business-Booster",
+    subtitle: "Mehr Sichtbarkeit, Anfragen und Bewertungen – ohne Dauerstress.",
+    bullets: [
+      "Social Media bespielen",
+      "Bewertungen einsammeln & beantworten",
+      "Leads & Anfragen nachfassen",
+    ],
+    track: "marketing",
+  });
+
+  cards.push({
+    id: "track_automation",
+    title: "Alltag & Automatisierung",
+    subtitle: "Dein digitaler Helfer für Erinnerungen, Routinen und Ordnung.",
+    bullets: [
+      "Todos aus Chats & Mails",
+      "Erinnerungen & Routinen",
+      "Dokumente sortieren & zusammenfassen",
+    ],
+    track: "automation",
+  });
+
+  cards.push({
+    id: "track_fun",
+    title: "Fun & Experimente",
+    subtitle: "Kleine Spielereien, Mini-Games und kreative Ideen mit deinem Bot.",
+    bullets: [
+      "Daily Challenges",
+      "Quiz & Trivia",
+      "Kleine Smart-Home-Spielereien",
+    ],
+    track: "fun",
+  });
+
+  cards.push({
+    id: "track_custom",
+    title: "Eigener Wunsch",
+    subtitle: "Du hast schon eine konkrete Idee? Erzähl sie mir.",
+    bullets: [
+      "Freier Text",
+      "Auch ausgefallene Wünsche",
+      "Wir prüfen, was machbar ist",
+    ],
+    track: "custom",
+  });
+
+  return cards;
+}
+
+function mergeState(input: WunschkastenStepInput, delta: ModelStateDelta | undefined): WunschkastenSessionState {
+  const base: WunschkastenSessionState =
+    input.state ?? {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      track: undefined,
+      audience: undefined,
+      goals: [],
+      platforms: [],
+      metadata: {},
+    };
+
+  const merged: WunschkastenSessionState = {
+    ...base,
+    ...delta,
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+  };
+
+  if (!merged.goals) {
+    merged.goals = base.goals ?? [];
+  }
+  if (!merged.platforms) {
+    merged.platforms = base.platforms ?? [];
+  }
+  if (!merged.metadata) {
+    merged.metadata = base.metadata ?? {};
+  }
+
+  return merged;
+}
+
+function toSuggestionPills(
+  staticPills: SuggestionPill[],
+  modelPills: ModelPill[] | undefined
+): SuggestionPill[] {
+  const results: SuggestionPill[] = [...staticPills];
+
+  if (!modelPills || modelPills.length === 0) {
+    return results;
+  }
+
+  for (const mp of modelPills) {
+    if (!mp || !mp.label) {
+      continue;
+    }
+    const id = mp.id && mp.id.length > 0 ? mp.id : "dyn_" + randomUUID();
+    results.push({
+      id,
+      label: mp.label,
+      intent: mp.intent,
+      source: "dynamic",
+    });
+  }
+
+  return results;
+}
+
+function toSuggestionCards(modelCards: ModelCard[] | undefined, fallbackCards: SuggestionCard[]): SuggestionCard[] {
+  const cards: SuggestionCard[] = [];
+
+  if (modelCards && modelCards.length > 0) {
+    for (const mc of modelCards) {
+      if (!mc || !mc.title) {
+        continue;
+      }
+      const id = mc.id && mc.id.length > 0 ? mc.id : "card_" + randomUUID();
+      cards.push({
+        id,
+        title: mc.title,
+        subtitle: mc.subtitle,
+        bullets: mc.bullets,
+        track: mc.track,
+      });
+    }
+  }
+
+  if (cards.length === 0) {
+    return fallbackCards;
+  }
+
+  return cards;
+}
+
+function toOffers(modelOffers: ModelOffer[] | undefined): OfferPreview[] | undefined {
+  if (!modelOffers || modelOffers.length === 0) {
+    return undefined;
+  }
+
+  const offers: OfferPreview[] = [];
+
+  for (const mo of modelOffers) {
+    if (!mo || !mo.title || !mo.description) {
+      continue;
+    }
+    const id = mo.id && mo.id.length > 0 ? mo.id : "offer_" + randomUUID();
+    offers.push({
+      id,
+      title: mo.title,
+      description: mo.description,
+      priceHint: mo.priceHint,
+      deliveryTimeHint: mo.deliveryTimeHint,
+      tier: mo.tier,
+      metadata: mo.metadata,
+    });
+  }
+
+  if (offers.length === 0) {
+    return undefined;
+  }
+
+  return offers;
+}
+
+export async function handleWunschkastenStep(
+  input: WunschkastenStepInput
+): Promise<WunschkastenStepResponse> {
+  const model = getSummaryModel();
+
+  const staticPills = buildStaticPills(input);
+  const staticCards = buildStaticCards(input.state);
+
+  const response = await openai.responses.create({
+    model,
+    instructions:
+      "You are the AI-Wunschkasten assistant for the Aklow platform. " +
+      "You help users design automation wishes for everyday life, business and fun. " +
+      "You always answer in the user's language. " +
+      "You must respond with ONLY minified JSON, no markdown, no comments, no extra text. " +
+      "Schema: {\\\"message\\\": string, \\\"dynamicPills\\\": {label: string, id?: string, intent?: string}[]?, \\\"cards\\\": {title: string, id?: string, subtitle?: string, bullets?: string[], track?: string}[]?, \\\"offers\\\": {id?: string, title: string, description: string, priceHint?: string, deliveryTimeHint?: string, tier?: string, metadata?: object}[]?, \\\"updatedState\\\": object?}. " +
+      "Always include a helpful, short message and a reasonable updatedState. " +
+      "Use the provided staticPills and staticCards as inspiration, but you can propose additional context-specific pills and cards.",
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify({
+              kind: "wunschkasten_step",
+              input,
+              staticPills,
+              staticCards,
+            }),
+          },
+        ],
+      },
+    ],
+  } as any);
+
+  const text = (response as any).output_text as string | undefined;
+
+  let parsed: ModelResponse | null = null;
+
+  if (text) {
+    try {
+      parsed = JSON.parse(text) as ModelResponse;
+    } catch {
+      parsed = null;
+    }
+  }
+
+  const message =
+    parsed && parsed.message && parsed.message.length > 0
+      ? parsed.message
+      : "Lass uns deinen AI-Wunschkasten Schritt für Schritt zusammenstellen.";
+
+  const mergedState = mergeState(input, parsed?.updatedState);
+
+  const pills = toSuggestionPills(staticPills, parsed?.dynamicPills);
+  const cards = toSuggestionCards(parsed?.cards, staticCards);
+  const offers = toOffers(parsed?.offers);
+
+  const result: WunschkastenStepResponse = {
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    channel: input.channel,
+    message,
+    state: mergedState,
+    pills,
+    cards,
+    offers,
+  };
+
+  const now = new Date();
+  const usageType: UsageEventType = "wunschkasten_step" as UsageEventType;
+
+  await recordUsageEvent({
+    tenantId: input.tenantId,
+    type: usageType,
+    route: "/agent/wunschkasten/step",
+    timestamp: now,
+    metadata: {
+      action: input.action,
+      track: mergedState.track ?? null,
+      hasOffers: !!offers && offers.length > 0,
+    },
+  });
+
+  return result;
+}

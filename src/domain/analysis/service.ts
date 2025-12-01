@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
-import { uploadDocumentFileToVectorStores, getVectorStoreId } from "../vector/service";
+import { uploadDocumentFileToVectorStores } from "../vector/service";
 import { writeMemory, getConversationMemory } from "../memory/service";
+import { searchVectors } from "../vectorLocal/service";
 
 export type AnalysisUploadInput = {
   tenantId: string;
@@ -52,7 +53,7 @@ Du analysierst Dateien und Daten eines bestimmten Unternehmens (Tenant). Dazu ge
 Du arbeitest nicht als allgemeiner Chatbot, sondern als fokussierter Analyse-Assistent für Business-Dokumente.
 
 Werkzeuge:
-- Du kannst auf die Dokumente des Tenants in Vector Stores zugreifen, um relevante Inhalte zu finden.
+- Du bekommst bereits vorab relevante Dokumentenausschnitte aus dem internen Vektor-Speicher (Business-Memory) des Tenants.
 - Du kannst Analyse-Werkzeuge nutzen, um mit Zahlen und Tabellen zu arbeiten.
 
 Wichtige Regeln:
@@ -78,6 +79,15 @@ Wichtige Regeln:
 5. Kontext der Anfrage:
    Die Nutzereingabe kann eine Analyse-Frage enthalten (zum Beispiel "Analysiere alle Kassenzettel im März").
    Wenn im Text zusätzliche Filter beschrieben sind (wie Tags, Zeitraum, Dokumenttypen), halte dich strikt daran.
+
+6. Eingabestruktur:
+   Du erhältst deine Eingabe als JSON-Objekt mit den Feldern:
+   - "message": die aktuelle Frage des Nutzers,
+   - "sessionContext": bisherige relevante Konversationsnachrichten,
+   - "vectorContext": eine Liste relevanter Dokument-Ausschnitte aus dem internen Vektor-Speicher des Tenants
+     (mit Inhalt, optionalen Metadaten und einem Score).
+
+   Nutze "vectorContext" als primäre Quelle für dokumentenbezogene Informationen.
 
 Typische Aufgaben:
 - Kassenbelege nach Kategorien und Zeiträumen auswerten (zum Beispiel: welche Kostenblöcke sind am größten).
@@ -133,8 +143,6 @@ export async function handleAnalysisUpload(input: AnalysisUploadInput): Promise<
 }
 
 export async function handleAnalysisQuery(input: AnalysisQueryInput): Promise<AnalysisQueryResult> {
-  const vectorStoreId = await getVectorStoreId(input.tenantId);
-
   const sessionContextRecords = await getConversationMemory({
     tenantId: input.tenantId,
     conversationId: input.sessionId,
@@ -143,10 +151,25 @@ export async function handleAnalysisQuery(input: AnalysisQueryInput): Promise<An
   });
 
   const sessionContext = sessionContextRecords.map(record => ({
-    type: record.type,
+    type: (record as any).type,
     content: record.content,
     createdAt: record.createdAt.toISOString(),
     metadata: record.metadata ?? undefined
+  }));
+
+  const vectorResults = await searchVectors({
+    tenantId: input.tenantId,
+    domain: "documents",
+    query: input.message,
+    topK: 8,
+    minScore: 0.2
+  });
+
+  const vectorContext = vectorResults.map(result => ({
+    content: result.content,
+    metadata: result.metadata ?? undefined,
+    sourceId: result.sourceId,
+    score: result.score
   }));
 
   const response = await openai.responses.create({
@@ -157,12 +180,12 @@ export async function handleAnalysisQuery(input: AnalysisQueryInput): Promise<An
         role: "user",
         content: JSON.stringify({
           message: input.message,
-          sessionContext
+          sessionContext,
+          vectorContext
         })
       }
     ],
     tools: [
-      { type: "file_search", vector_store_ids: [vectorStoreId] },
       { type: "code_interpreter", container: { type: "auto" } }
     ]
   });

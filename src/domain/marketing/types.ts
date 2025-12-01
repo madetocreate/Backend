@@ -1,4 +1,4 @@
-import { TenantId } from "../../core/types";
+import { TenantId } from "../core/types";
 import { ContentImage } from "../content/types";
 
 export type MarketingGoal = "social_post" | "landingpage" | "newsletter" | "ad" | "other";

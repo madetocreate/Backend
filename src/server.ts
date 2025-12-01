@@ -20,8 +20,16 @@ import { registerMarketingAgentRoutes } from "./routes/marketingAgent";
 import { registerSocialAgentRoutes } from "./routes/socialAgent";
 import { registerResearchAgentRoutes } from "./routes/researchAgent";
 import { registerWebshopAgentRoutes } from "./routes/webshopAgent";
+import { registerSearchRoutes } from "./routes/search";
+import { registerMemoryAdminRoutes } from "./routes/memoryAdmin";
+import { registerMemoryAgentRoutes } from "./routes/memoryAgent";
+import { registerWunschkastenAgentRoutes } from "./routes/wunschkastenAgent";
+import { registerWunschkastenOrderRoutes } from "./routes/wunschkastenOrder";
+import { registerWunschkastenBlueprintRoutes } from "./routes/wunschkastenBlueprint";
 
-const app = Fastify({});
+const app = Fastify({
+  bodyLimit: 10 * 1024 * 1024
+});
 
 app.removeAllContentTypeParsers();
 app.removeContentTypeParser("multipart/form-data");
@@ -59,15 +67,21 @@ app.register(registerOperatorInboxRoutes);
 app.register(registerBillingStripeRoutes);
 app.register(registerAnalysisAgentRoutes);
 app.register(registerCommunicationsAgentRoutes);
-app.register(registerReviewsAgentRoutes);
 app.register(registerIngestAudioRoutes);
+app.register(registerReviewsAgentRoutes);
 app.register(registerWebsiteAgentRoutes);
+app.register(registerWunschkastenAgentRoutes);
+app.register(registerWunschkastenOrderRoutes);
+app.register(registerWunschkastenBlueprintRoutes);
 app.register(registerContentAgentRoutes);
 app.register(registerCalendarAgentRoutes);
 app.register(registerMarketingAgentRoutes);
 app.register(registerSocialAgentRoutes);
 app.register(registerResearchAgentRoutes);
 app.register(registerWebshopAgentRoutes);
+app.register(registerSearchRoutes);
+app.register(registerMemoryAdminRoutes);
+app.register(registerMemoryAgentRoutes);
 
 const PORT = Number(process.env.PORT ?? "4000");
 

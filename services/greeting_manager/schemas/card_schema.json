@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "required": ["id", "type", "title"],
+  "properties": {
+    "id": { "type": "string" },
+    "type": { "type": "string" },
+    "title": { "type": "string" },
+    "subtitle": { "type": ["string", "null"] },
+    "body": { "type": ["string", "null"] },
+    "priority": { "type": ["number", "null"] },
+    "topic_tags": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "source": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "image_prompt": { "type": ["string", "null"] },
+    "image_url": { "type": ["string", "null"] },
+    "actions": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["label", "action_type"],
+        "properties": {
+          "label": { "type": "string" },
+          "action_type": { "type": "string" },
+          "payload": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "meta": { "type": ["object", "null"] }
+  },
+  "additionalProperties": false
+}

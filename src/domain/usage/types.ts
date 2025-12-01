@@ -13,7 +13,10 @@ export type UsageEventType =
   | "marketing_content"
   | "social_schedule"
   | "research_query"
-  | "webshop_assist";
+  | "webshop_assist"
+  | "wunschkasten_step"
+  | "wunschkasten_order"
+  | "wunschkasten_blueprint";
 
 export type UsageEvent = {
   tenantId: TenantId;

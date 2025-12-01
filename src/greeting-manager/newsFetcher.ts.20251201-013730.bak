@@ -1,0 +1,75 @@
+import { GreetingCard } from "./cardTypes";
+import { TopicPlan, TopicSpec } from "./topicPlanner";
+
+export interface NewsFetcherContext {
+  userId: string;
+  locale: string;
+  now: string;
+}
+
+export interface NewsSearchResult {
+  title: string;
+  summary: string;
+  url: string;
+  sourceName: string;
+  topicTag?: string;
+}
+
+export interface NewsFetcherDeps {
+  searchNewsForTopic: (
+    topic: TopicSpec,
+    context: NewsFetcherContext
+  ) => Promise<NewsSearchResult[]>;
+}
+
+export function makeNewsFetcher(deps: NewsFetcherDeps) {
+  return async function fetchNewsCards(
+    context: NewsFetcherContext,
+    topicPlan: TopicPlan
+  ): Promise<GreetingCard[]> {
+    const cards: GreetingCard[] = [];
+    const allTopics: TopicSpec[] = []
+      .concat(topicPlan.generalTopics)
+      .concat(topicPlan.personalTopics);
+    let counter = 0;
+    for (const topic of allTopics) {
+      const results = await deps.searchNewsForTopic(topic, context);
+      for (const result of results) {
+        const cardId = "news-" + topic.kind + "-" + counter;
+        counter = counter + 1;
+        const tags = result.topicTag ? [result.topicTag] : undefined;
+        cards.push({
+          id: cardId,
+          type: topic.kind === "general" ? "general_news" : "personal_news",
+          title: result.title,
+          subtitle: result.sourceName,
+          body: result.summary,
+          topicTags: tags,
+          priority: topic.importance,
+          source: {
+            name: result.sourceName,
+            url: result.url
+          },
+          actions: [
+            {
+              label: "Details im Chat",
+              actionType: "open_chat",
+              payload: {
+                kind: "news_detail",
+                url: result.url
+              }
+            },
+            {
+              label: "Original lesen",
+              actionType: "open_url",
+              payload: {
+                url: result.url
+              }
+            }
+          ]
+        });
+      }
+    }
+    return cards;
+  };
+}

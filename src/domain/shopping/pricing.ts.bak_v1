@@ -1,0 +1,5 @@
+import type { ShoppingJob } from "./types";
+
+export function attachPriceEstimates(job: ShoppingJob): ShoppingJob {
+  return job;
+}

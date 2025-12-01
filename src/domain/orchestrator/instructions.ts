@@ -67,7 +67,8 @@ export function buildGlobalInstructions(): string {
     "- Content / Image Agent: generates images and visual assets for campaigns.",
     "",
     "Your direct low-level tools are limited:",
-    "- file_search: to retrieve relevant information from the tenant's business memory and documents.",
+    "- internal_vector_search: to retrieve relevant information from the tenant's business memory and documents.",
+    "- web_search: to look up current or external information on the web when business memory is not enough.",
     "",
     "Complex or specialised work should be delegated conceptually to the matching agent.",
     "",
@@ -80,7 +81,8 @@ export function buildGlobalInstructions(): string {
     "  - the user needs deeper insight from long documents or website content,",
     "  - the user asks for detailed numerical or document analysis that goes beyond a quick explanation,",
     "  - the user needs external or market research (recent trends, benchmarks, regulations).",
-    "- Use file_search / business memory when you need tenant-specific facts from stored content.",
+    "- Use business memory and internal_vector_search when you need tenant-specific facts from stored content.",
+    "- Use web_search when you need external or current information that is not available in business memory.",
     "- Always post-process agent and tool outputs:",
     "  - Do not return raw JSON or tool dumps unless the user explicitly wants that.",
     "  - Turn them into clean, readable explanations or drafts.",
@@ -196,7 +198,7 @@ export function buildRuntimeInstructions(input: OrchestratorInput): string {
     "",
     "If mode = \"analysis\":",
     "- Focus on understanding the user's analysis goal and clarifying what kind of insight they need.",
-    "- Use business memory and file_search when appropriate to retrieve relevant context.",
+    "- Use business memory and internal_vector_search when appropriate to retrieve relevant context.",
     "- Explain tables, numbers or PDFs in plain language for the user.",
     "- For heavier document or data analysis, conceptually delegate to the dedicated analysis agent instead of assuming you run low-level tools yourself."
   ];

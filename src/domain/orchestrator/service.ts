@@ -1,13 +1,15 @@
 import { openai } from "../../integrations/openai/client";
-import { getVectorStoreId } from "../vector/service";
 import { summarizeText } from "./summary";
 import { OrchestratorInput } from "./types-orchestrator";
 import { buildInstructions } from "./instructions";
 import { getChatModel } from "../../config/model";
-import { writeMemory } from "../memory/service";
+import { writeMemory, getConversationMemory } from "../memory/service";
 import { handleInboxRequest, handleReplyRequest } from "../communications/service";
 import { handleResearchQuery } from "../research/service";
 import { handleAnalysisQuery } from "../analysis/service";
+import { searchVectors } from "../vectorLocal/service";
+import { handleMemoryAgentRequest } from "../memoryAgent/service";
+import { handleShoppingQuery } from "../shopping/service";
 
 type OrchestratorStep = {
   id: string;
@@ -15,6 +17,223 @@ type OrchestratorStep = {
   status: "done";
   details?: string;
 };
+
+type ConversationMemoryRecord = {
+  content: string;
+  metadata?: any;
+};
+
+type ChatInputMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+type BusinessContextSnippet = {
+  id: string;
+  domain: string;
+  content: string;
+  score: number;
+  sourceId: string;
+  metadata?: any;
+};
+
+async function buildConversationContextMessages(
+  input: OrchestratorInput
+): Promise<ChatInputMessage[]> {
+  const messages: ChatInputMessage[] = [];
+
+  try {
+    const [summaryRecords, recentMessages] = await Promise.all([
+      getConversationMemory({
+        tenantId: input.tenantId,
+        conversationId: input.sessionId,
+        types: ["conversation_summary"],
+        limit: 1
+      }),
+      getConversationMemory({
+        tenantId: input.tenantId,
+        conversationId: input.sessionId,
+        types: ["conversation_message"],
+        limit: 10
+      })
+    ]);
+
+    if (summaryRecords && summaryRecords.length > 0) {
+      const summary = summaryRecords[0] as ConversationMemoryRecord;
+      if (summary.content && summary.content.trim().length > 0) {
+        messages.push({
+          role: "system",
+          content:
+            "Bisherige Kurz-Zusammenfassung dieser Konversation:\n\n" +
+            summary.content
+        });
+      }
+    }
+
+    if (recentMessages && recentMessages.length > 0) {
+      for (const recordRaw of recentMessages) {
+        const record = recordRaw as ConversationMemoryRecord;
+        if (!record || typeof record.content !== "string") continue;
+        const trimmed = record.content.trim();
+        if (!trimmed) continue;
+
+        messages.push({
+          role: "system",
+          content:
+            "Auszug aus dem bisherigen Gesprächsverlauf (User und Assistant):\n\n" +
+            trimmed
+        });
+      }
+    }
+  } catch (e) {
+  }
+
+  return messages;
+}
+
+async function buildBusinessContextMessage(
+  input: OrchestratorInput
+): Promise<ChatInputMessage | null> {
+  const domains: ("business_profile" | "documents" | "emails" | "reviews")[] = [
+    "business_profile",
+    "documents",
+    "emails",
+    "reviews"
+  ];
+
+  const snippets: BusinessContextSnippet[] = [];
+
+  for (const domain of domains) {
+    try {
+      const results = await searchVectors({
+        tenantId: input.tenantId,
+        domain,
+        query: input.message,
+        topK: 4,
+        minScore: 0.25
+      });
+
+      for (const r of results) {
+        const meta =
+          r.metadata && typeof r.metadata === "object"
+            ? (r.metadata as any)
+            : undefined;
+
+        snippets.push({
+          id: r.id,
+          domain: r.domain,
+          content: r.content,
+          score: r.score,
+          sourceId: r.sourceId,
+          metadata: meta
+        });
+      }
+    } catch (e) {
+    }
+  }
+
+  if (snippets.length === 0) {
+    return null;
+  }
+
+  const lines: string[] = [];
+  lines.push("Relevante Ausschnitte aus dem Business-Memory dieses Tenants:");
+
+  for (const s of snippets) {
+    const headerParts: string[] = [];
+    headerParts.push("Domain: " + s.domain);
+    headerParts.push("Score: " + s.score.toFixed(3));
+    headerParts.push("SourceId: " + s.sourceId);
+    const header = headerParts.join(" | ");
+
+    let metaText = "";
+    if (s.metadata && typeof s.metadata === "object") {
+      const keys = Object.keys(s.metadata).slice(0, 5);
+      if (keys.length > 0) {
+        const kv = keys
+          .map((k) => {
+            const v = (s.metadata as any)[k];
+            const vs =
+              v === null || v === undefined
+                ? ""
+                : String(v).slice(0, 80);
+            return k + ": " + vs;
+          })
+          .join(", ");
+        metaText = "Metadaten: " + kv;
+      }
+    }
+
+    const blockLines: string[] = [];
+    blockLines.push(header);
+    if (metaText) {
+      blockLines.push(metaText);
+    }
+    blockLines.push("");
+    blockLines.push(s.content);
+
+    lines.push(blockLines.join("\n"));
+  }
+
+  return {
+    role: "system",
+    content: lines.join("\n\n---\n\n")
+  };
+}
+
+async function maybeSummarizeConversation(input: OrchestratorInput) {
+  try {
+    const records = await getConversationMemory({
+      tenantId: input.tenantId,
+      conversationId: input.sessionId,
+      types: ["conversation_message"],
+      limit: 100
+    });
+
+    if (!records || records.length < 20) {
+      return;
+    }
+
+    const textParts: string[] = [];
+    for (const raw of records) {
+      const rec = raw as ConversationMemoryRecord;
+      if (!rec || typeof rec.content !== "string") continue;
+      const trimmed = rec.content.trim();
+      if (!trimmed) continue;
+      textParts.push(trimmed);
+    }
+
+    if (textParts.length === 0) {
+      return;
+    }
+
+    const combined = textParts.join("\n\n---\n\n");
+    const summary = await summarizeText(combined);
+
+    if (!summary || summary.trim().length === 0) {
+      return;
+    }
+
+    const meta = (input.metadata ?? {}) as any;
+
+    await writeMemory({
+      tenantId: input.tenantId,
+      type: "conversation_summary",
+      content: summary,
+      metadata: {
+        channel: input.channel,
+        sessionId: input.sessionId,
+        source: "orchestrator_auto_summary",
+        messageCount: records.length,
+        memoryMode: meta.memoryMode,
+        projectId: meta.projectId
+      },
+      conversationId: input.sessionId,
+      createdAt: new Date()
+    });
+  } catch (e) {
+  }
+}
 
 export async function createResponse(input: OrchestratorInput) {
   const metadata = (input.metadata ?? {}) as any;
@@ -97,7 +316,9 @@ export async function createResponse(input: OrchestratorInput) {
         channel: input.channel,
         sessionId: input.sessionId,
         mode: metadata.mode ?? "communications_inbox",
-        tool: tool
+        tool: tool,
+        memoryMode: metadata.memoryMode,
+        projectId: metadata.projectId
       },
       conversationId: input.sessionId,
       createdAt: new Date()
@@ -176,7 +397,9 @@ export async function createResponse(input: OrchestratorInput) {
         mode: metadata.mode ?? "communications_reply",
         tool: tool,
         messageType,
-        hasOriginal: Object.keys(original).length > 0
+        hasOriginal: Object.keys(original).length > 0,
+        memoryMode: metadata.memoryMode,
+        projectId: metadata.projectId
       },
       conversationId: input.sessionId,
       createdAt: new Date()
@@ -236,7 +459,9 @@ export async function createResponse(input: OrchestratorInput) {
         channel: input.channel,
         sessionId: input.sessionId,
         mode: metadata.mode ?? "analysis",
-        tool: tool
+        tool: tool,
+        memoryMode: metadata.memoryMode,
+        projectId: metadata.projectId
       },
       conversationId: input.sessionId,
       createdAt: new Date()
@@ -332,13 +557,242 @@ export async function createResponse(input: OrchestratorInput) {
         sessionId: input.sessionId,
         mode: metadata.mode ?? "research",
         tool: tool,
-        scope: scope ?? "general",
+        researchScope: scope ?? "general",
         maxSources: maxSources ?? 5,
-        sourceCount: researchResult.sources ? researchResult.sources.length : 0
+        sourceCount: researchResult.sources ? researchResult.sources.length : 0,
+        memoryMode: metadata.memoryMode,
+        projectId: metadata.projectId
       },
       conversationId: input.sessionId,
       createdAt: new Date()
     });
+
+    return {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      channel: input.channel,
+      content,
+      steps
+    };
+  }
+
+
+  if (tool === "shopping_query") {
+    steps.push({
+      id: "prepare_shopping_query",
+      label: "Shopping-Anfrage und Präferenzen vorbereiten",
+      status: "done"
+    });
+    steps.push({
+      id: "call_shopping_agent",
+      label: "Shopping-Agent für Einkaufsplan aufrufen",
+      status: "done"
+    });
+
+    const messageRaw = metadata.message;
+    const message =
+      typeof messageRaw === "string" && messageRaw.trim().length > 0
+        ? messageRaw
+        : input.message;
+
+    const language =
+      typeof metadata.language === "string" && metadata.language.trim().length > 0
+        ? metadata.language
+        : undefined;
+
+    const countryCode =
+      typeof metadata.countryCode === "string" && metadata.countryCode.trim().length > 0
+        ? metadata.countryCode
+        : undefined;
+
+    const preferredStore =
+      typeof metadata.preferredStore === "string" && metadata.preferredStore.trim().length > 0
+        ? metadata.preferredStore
+        : undefined;
+
+    const shoppingResult = await handleShoppingQuery({
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      message,
+      language,
+      countryCode,
+      preferredStore,
+      metadata
+    });
+
+    const content = shoppingResult.content;
+
+    steps.push({
+      id: "store_shopping_memory",
+      label: "Shopping-Ergebnis im Memory speichern",
+      status: "done",
+      details: "conversation_message"
+    });
+
+    await writeMemory({
+      tenantId: input.tenantId,
+      type: "conversation_message",
+      content:
+        "User (shopping_query): " +
+        message +
+        "\nAssistant (shopping_plan): " +
+        content,
+      metadata: {
+        channel: input.channel,
+        sessionId: input.sessionId,
+        mode: metadata.mode ?? "shopping",
+        tool: tool,
+        memoryMode: metadata.memoryMode,
+        projectId: metadata.projectId,
+        shoppingJob: shoppingResult.job
+      },
+      conversationId: input.sessionId,
+      createdAt: new Date()
+    });
+
+    return {
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      channel: input.channel,
+      content,
+      steps
+    };
+  }
+
+  if (tool === "memory_manage") {
+    steps.push({
+      id: "prepare_memory_agent_operations",
+      label: "Memory-Agent-Operationen vorbereiten",
+      status: "done"
+    });
+    const operationsRaw =
+      metadata && (metadata.memoryOperations ?? metadata.operations);
+    const operations = Array.isArray(operationsRaw) ? operationsRaw : [];
+    if (operations.length === 0) {
+      const content =
+        "Memory-Agent wurde mit tool=\"memory_manage\" aufgerufen, aber es wurden keine Operationen übergeben.";
+      return {
+        tenantId: input.tenantId,
+        sessionId: input.sessionId,
+        channel: input.channel,
+        content,
+        steps
+      };
+    }
+
+    steps.push({
+      id: "call_memory_agent",
+      label: "Memory-Agent zum Lesen/Schreiben/Löschen aufrufen",
+      status: "done"
+    });
+
+    const agentResult = await handleMemoryAgentRequest({
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      operations: operations as any[],
+      channel: "agent_memory",
+      metadata
+    });
+
+    const lines: string[] = [];
+
+    for (const raw of agentResult.operations as any[]) {
+      const opResult = raw as any;
+      if (!opResult || typeof opResult !== "object") continue;
+
+      if (opResult.op === "write") {
+        const statusLabel = opResult.ok ? "gespeichert" : "fehlgeschlagen";
+        const idPart =
+          opResult.id && typeof opResult.id === "string"
+            ? " (ID: " + opResult.id + ")"
+            : "";
+        lines.push(
+          "Write: Typ=" +
+            opResult.type +
+            " wurde " +
+            statusLabel +
+            idPart
+        );
+      } else if (opResult.op === "update_status") {
+        const ids = Array.isArray(opResult.ids) ? opResult.ids : [];
+        const total = ids.length;
+        const okCount = ids.filter((x: any) => x && x.ok).length;
+        lines.push(
+          "Update-Status: " +
+            okCount +
+            " von " +
+            total +
+            " Einträgen auf Status \"" +
+            opResult.status +
+            "\" gesetzt."
+        );
+      } else if (opResult.op === "search_local") {
+        const items = Array.isArray(opResult.items) ? opResult.items : [];
+        const count = items.length;
+        lines.push(
+          "Search Local: " +
+            count +
+            " Treffer für Query \"" +
+            opResult.query +
+            "\"."
+        );
+        const previews = items.slice(0, 3);
+        for (const item of previews) {
+          const content =
+            item && typeof item.content === "string"
+              ? item.content.slice(0, 120)
+              : "";
+          const suffix = content.length === 120 ? "…" : "";
+          lines.push(
+            "- [" +
+              item.id +
+              "] (" +
+              item.type +
+              "): " +
+              content +
+              suffix
+          );
+        }
+      } else if (opResult.op === "search_vector") {
+        const items = Array.isArray(opResult.items) ? opResult.items : [];
+        const count = items.length;
+        lines.push(
+          "Search Vector (" +
+            opResult.domain +
+            "): " +
+            count +
+            " Treffer für Query \"" +
+            opResult.query +
+            "\"."
+        );
+        const previews = items.slice(0, 3);
+        for (const item of previews) {
+          const content =
+            item && typeof item.content === "string"
+              ? item.content.slice(0, 120)
+              : "";
+          const suffix = content.length === 120 ? "…" : "";
+          const score =
+            typeof item.score === "number"
+              ? item.score.toFixed(3)
+              : "";
+          lines.push(
+            "- [" +
+              item.id +
+              "] (Score " +
+              score +
+              "): " +
+              content +
+              suffix
+          );
+        }
+      }
+    }
+
+    const content =
+      lines.length > 0
+        ? lines.join("\n")
+        : "Der Memory-Agent hat keine Operationen ausgeführt oder keine Ergebnisse geliefert.";
 
     return {
       tenantId: input.tenantId,
@@ -355,25 +809,28 @@ export async function createResponse(input: OrchestratorInput) {
     status: "done"
   });
 
-  const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
 
   steps.push({
     id: "call_orchestrator_model",
-    label: "Orchestrator-Modell mit file_search-Tool aufrufen",
+    label: "Orchestrator-Modell aufrufen (mit Business-Memory-Kontext)",
     status: "done"
   });
+
+  const tools: any[] = [{ type: "web_search" }];
+
+  const contextMessages = await buildConversationContextMessages(input);
+  const businessContextMessage = await buildBusinessContextMessage(input);
+
+  const inputMessages: ChatInputMessage[] = businessContextMessage
+    ? [...contextMessages, businessContextMessage, { role: "user", content: input.message }]
+    : [...contextMessages, { role: "user", content: input.message }];
 
   const response = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: [
-      {
-        role: "user",
-        content: input.message
-      }
-    ],
-    tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }]
+    input: inputMessages,
+    tools
   });
 
   const content = response.output_text;
@@ -392,11 +849,15 @@ export async function createResponse(input: OrchestratorInput) {
     metadata: {
       channel: input.channel,
       sessionId: input.sessionId,
-      mode: metadata.mode ?? "general_chat"
+      mode: metadata.mode ?? "general_chat",
+      memoryMode: metadata.memoryMode,
+      projectId: metadata.projectId
     },
     conversationId: input.sessionId,
     createdAt: new Date()
   });
+
+  await maybeSummarizeConversation(input);
 
   return {
     tenantId: input.tenantId,
@@ -408,19 +869,22 @@ export async function createResponse(input: OrchestratorInput) {
 }
 
 export async function createStreamingResponse(input: OrchestratorInput) {
-  const vectorStoreId = await getVectorStoreId(input.tenantId);
   const instructions = buildInstructions(input);
+
+  const tools: any[] = [{ type: "web_search" }];
+
+  const contextMessages = await buildConversationContextMessages(input);
+  const businessContextMessage = await buildBusinessContextMessage(input);
+
+  const inputMessages: ChatInputMessage[] = businessContextMessage
+    ? [...contextMessages, businessContextMessage, { role: "user", content: input.message }]
+    : [...contextMessages, { role: "user", content: input.message }];
 
   const stream = await openai.responses.create({
     model: getChatModel(),
     instructions,
-    input: [
-      {
-        role: "user",
-        content: input.message
-      }
-    ],
-    tools: [{ type: "file_search", vector_store_ids: [vectorStoreId] }],
+    input: inputMessages,
+    tools,
     stream: true
   });
 

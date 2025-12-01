@@ -3,48 +3,87 @@ import { recordUsageEvent } from "../usage/service";
 import type { UsageEventType } from "../usage/types";
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
-import { getVectorStoreId } from "../vector/service";
 import {
   ResearchRequest,
   ResearchResponse,
   ResearchSource,
 } from "./types";
 import { getConversationMemory } from "../memory/service";
+import { searchVectors } from "../vectorLocal/service";
 
 type CoreResult = {
   answer: string;
   sources: ResearchSource[];
 };
 
+type InternalSnippet = {
+  id: string;
+  domain: string;
+  content: string;
+  score: number;
+  metadata?: Record<string, unknown>;
+  sourceId: string;
+};
+
+async function buildInternalContext(
+  tenantId: string,
+  question: string
+): Promise<InternalSnippet[]> {
+  const snippets: InternalSnippet[] = [];
+  const domains: ("business_profile" | "documents" | "emails" | "reviews")[] = [
+    "business_profile",
+    "documents",
+    "emails",
+    "reviews"
+  ];
+
+  for (const domain of domains) {
+    try {
+      const results = await searchVectors({
+        tenantId,
+        domain,
+        query: question,
+        topK: 4,
+        minScore: 0.25
+      });
+
+      for (const r of results) {
+        const meta =
+          r.metadata && typeof r.metadata === "object"
+            ? (r.metadata as Record<string, unknown>)
+            : undefined;
+
+        snippets.push({
+          id: r.id,
+          domain: r.domain,
+          content: r.content,
+          score: r.score,
+          metadata: meta,
+          sourceId: r.sourceId
+        });
+      }
+    } catch {
+    }
+  }
+
+  return snippets;
+}
+
 async function callResearchCore(
   input: ResearchRequest,
-  vectorStoreId: string | undefined,
+  internalContext: InternalSnippet[],
   useTools: boolean,
   sessionContext: any[]
 ): Promise<CoreResult> {
   const model = getSummaryModel();
 
-  const tools: any[] | undefined = useTools
-    ? [
-        { type: "web_search" },
-        ...(vectorStoreId
-          ? [
-              {
-                type: "file_search",
-                file_search: {
-                  vector_store_ids: [vectorStoreId],
-                },
-              },
-            ]
-          : []),
-      ]
-    : undefined;
+  const tools: any[] | undefined = useTools ? [{ type: "web_search" }] : undefined;
 
   const response = await openai.responses.create({
     model,
     instructions:
       "You are a research assistant. " +
-      "You can (optionally) use web_search and file_search tools to gather information. " +
+      "You can optionally use web_search and the provided internalContext snippets from the tenant's business memory to gather information. " +
       "Answer the user's question and provide a short list of sources. " +
       "Return ONLY minified JSON without markdown, comments or explanations. " +
       'Schema: {"answer": string, "sources": [{"id": string, "title": string, "url"?: string, "kind": "web" | "internal", "snippet"?: string}]}. ' +
@@ -60,7 +99,7 @@ async function callResearchCore(
               scope: input.scope ?? "general",
               maxSources: input.maxSources ?? 5,
               tenantId: input.tenantId,
-              vectorStoreId,
+              internalContext,
               metadata: input.metadata,
               sessionContext
             }),
@@ -134,25 +173,23 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
     metadata: record.metadata ?? undefined
   }));
 
-  let vectorStoreId: string | undefined;
-  try {
-    vectorStoreId = await getVectorStoreId(input.tenantId);
-  } catch {
-    vectorStoreId = undefined;
-  }
+  const internalContext = await buildInternalContext(
+    input.tenantId as string,
+    input.question
+  );
 
   let answer = "";
   let sources: ResearchSource[] = [];
   let usedTools = false;
 
   try {
-    const coreWithTools = await callResearchCore(input, vectorStoreId, true, sessionContext);
+    const coreWithTools = await callResearchCore(input, internalContext, true, sessionContext);
     answer = coreWithTools.answer;
     sources = coreWithTools.sources;
     usedTools = true;
 
     if (!answer && sources.length === 0) {
-      const coreNoTools = await callResearchCore(input, vectorStoreId, false, sessionContext);
+      const coreNoTools = await callResearchCore(input, internalContext, false, sessionContext);
       if (coreNoTools.answer) {
         answer = coreNoTools.answer;
         sources = coreNoTools.sources;
@@ -161,7 +198,7 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
     }
   } catch {
     try {
-      const coreNoTools = await callResearchCore(input, vectorStoreId, false, sessionContext);
+      const coreNoTools = await callResearchCore(input, internalContext, false, sessionContext);
       answer = coreNoTools.answer;
       sources = coreNoTools.sources;
       usedTools = false;
@@ -187,7 +224,9 @@ export async function handleResearchQuery(input: ResearchRequest): Promise<Resea
     metadata: {
       scope: input.scope ?? "general",
       maxSources: input.maxSources ?? 5,
-      hasVectorStore: Boolean(vectorStoreId),
+      hasVectorStore: internalContext.length > 0,
+      hasInternalContext: internalContext.length > 0,
+      internalSnippetCount: internalContext.length,
       channel,
       usedTools,
     },

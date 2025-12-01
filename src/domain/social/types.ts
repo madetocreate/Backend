@@ -1,4 +1,4 @@
-import { TenantId } from "../../core/types";
+import { TenantId } from "../core/types";
 
 export type SocialPlatform =
   | "instagram"

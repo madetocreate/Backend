@@ -1,6 +1,5 @@
 import { openai } from "../../integrations/openai/client";
 import { getSummaryModel } from "../../config/model";
-import { getVectorStoreId } from "../vector/service";
 
 export type WebsiteAssistantQueryInput = {
   tenantId: string;
@@ -20,7 +19,7 @@ const WEBSITE_AGENT_SYSTEM_PROMPT = `
 Du bist der Website- und Produkt-Assistent von Aklow (bzw. des jeweils aktiven Tenants).
 
 Deine Aufgabe:
-Du hilfst Besucherinnen und Besuchern dabei, das Unternehmen, seine Produkte/Services und die Funktionsweise der Plattform zu verstehen – basierend auf den vorhandenen Inhalten des Tenants (Website-Texte, Dokumente, Notizen, FAQs, E-Mails usw.).
+Du hilfst Besucherinnen und Besucher dabei, das Unternehmen, seine Produkte/Services und die Funktionsweise der Plattform zu verstehen – basierend auf den vorhandenen Inhalten des Tenants (Website-Texte, Dokumente, Notizen, FAQs, E-Mails usw.).
 
 Du bist KEIN generischer Website-Chatbot:
 - Du bist ein fachkundiger Guide für genau dieses Unternehmen.
@@ -83,7 +82,6 @@ Du sollst Besucherinnen und Besucher so abholen, dass sie:
 `;
 
 export async function handleWebsiteAssistantQuery(input: WebsiteAssistantQueryInput): Promise<WebsiteAssistantQueryResult> {
-  const vectorStoreId = await getVectorStoreId(input.tenantId);
   const response = await openai.responses.create({
     model: getSummaryModel(),
     instructions: WEBSITE_AGENT_SYSTEM_PROMPT,
@@ -91,27 +89,31 @@ export async function handleWebsiteAssistantQuery(input: WebsiteAssistantQueryIn
       {
         role: "user",
         content: JSON.stringify({
+          tenantId: input.tenantId,
+          sessionId: input.sessionId,
           message: input.message,
           focus: input.focus ?? null
         })
       }
-    ],
-    tools: [
-      { type: "file_search", vector_store_ids: [vectorStoreId] }
     ]
   });
+
+  const content =
+    (response as any).output_text && typeof (response as any).output_text === "string"
+      ? ((response as any).output_text as string)
+      : null;
+
   return {
     tenantId: input.tenantId,
     sessionId: input.sessionId,
     channel: "agent_website",
-    content: response.output_text
+    content
   };
 }
 
 export async function createWebsiteAssistantStream(
   input: WebsiteAssistantQueryInput
 ): Promise<AsyncIterable<any>> {
-  const vectorStoreId = await getVectorStoreId(input.tenantId);
   const stream = await openai.responses.create({
     model: getSummaryModel(),
     instructions: WEBSITE_AGENT_SYSTEM_PROMPT,
@@ -119,15 +121,15 @@ export async function createWebsiteAssistantStream(
       {
         role: "user",
         content: JSON.stringify({
+          tenantId: input.tenantId,
+          sessionId: input.sessionId,
           message: input.message,
           focus: input.focus ?? null
         })
       }
     ],
-    tools: [
-      { type: "file_search", vector_store_ids: [vectorStoreId] }
-    ],
     stream: true
   });
+
   return stream as AsyncIterable<any>;
 }

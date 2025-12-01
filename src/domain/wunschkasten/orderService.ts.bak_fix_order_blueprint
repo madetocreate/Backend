@@ -1,0 +1,117 @@
+import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
+import {
+  CreateWunschOrderInput,
+  WunschOrder,
+  AutomationBlueprint,
+} from "./types";
+import { recordUsageEvent } from "../usage/service";
+import type { UsageEventType } from "../usage/types";
+import { createBlueprintForKasten } from "./blueprintService";
+
+const ORDERS_DIR = path.join(process.cwd(), "data");
+const ORDERS_FILE = path.join(ORDERS_DIR, "wunsch_orders.jsonl");
+
+async function maybeGenerateBlueprint(
+  input: CreateWunschOrderInput
+): Promise<{
+  blueprint?: AutomationBlueprint;
+  researchSummary?: string;
+  analysisSummary?: string;
+}> {
+  if (input.blueprint) {
+    return {
+      blueprint: input.blueprint,
+      researchSummary: undefined,
+      analysisSummary: undefined,
+    };
+  }
+
+  try {
+    const idea =
+      input.blueprintSummary ??
+      input.offer.description ??
+      input.offer.title;
+
+    const state = input.stateSnapshot;
+
+    const result = await createBlueprintForKasten({
+      tenantId: input.tenantId as any,
+      sessionId: input.sessionId,
+      channel: "app" as any,
+      idea,
+      state,
+    });
+
+    return {
+      blueprint: result.blueprint,
+      researchSummary: result.researchSummary,
+      analysisSummary: result.analysisSummary,
+    };
+  } catch {
+    return {
+      blueprint: undefined,
+      researchSummary: undefined,
+      analysisSummary: undefined,
+    };
+  }
+}
+
+export async function createWunschOrder(
+  input: CreateWunschOrderInput
+): Promise<WunschOrder> {
+  const nowIso = new Date().toISOString();
+  const id = randomUUID();
+
+  const {
+    blueprint,
+    researchSummary,
+    analysisSummary,
+  } = await maybeGenerateBlueprint(input);
+
+  const blueprintSummary =
+    input.blueprintSummary ?? (blueprint ? blueprint.description : undefined);
+
+  const order: WunschOrder = {
+    id,
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    audience: input.audience,
+    track: input.track,
+    offerId: input.offer.id,
+    offerTitle: input.offer.title,
+    offerDescription: input.offer.description,
+    priceHint: input.offer.priceHint,
+    deliveryTimeHint: input.offer.deliveryTimeHint,
+    tier: input.offer.tier,
+    blueprintSummary: blueprintSummary,
+    blueprint,
+    researchSummary,
+    analysisSummary,
+    stateSnapshot: input.stateSnapshot,
+    status: "requested",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    metadata: input.metadata ?? {},
+  };
+
+  await fs.mkdir(ORDERS_DIR, { recursive: true });
+  const line = JSON.stringify(order);
+  await fs.appendFile(ORDERS_FILE, line + "\n", "utf8");
+
+  const usageType: UsageEventType = "wunschkasten_order" as UsageEventType;
+
+  await recordUsageEvent({
+    tenantId: input.tenantId,
+    type: usageType,
+    route: "/agent/wunschkasten/order",
+    timestamp: new Date(),
+    metadata: {
+      track: order.track ?? null,
+      tier: order.tier ?? null,
+    },
+  });
+
+  return order;
+}

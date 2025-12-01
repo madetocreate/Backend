@@ -1,4 +1,4 @@
-import { TenantId } from "../../core/types";
+import { TenantId } from "../core/types";
 
 export type CalendarEventType = "meeting" | "task" | "reminder" | "block" | "other";
 

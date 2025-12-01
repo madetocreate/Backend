@@ -52,4 +52,20 @@ CREATE TABLE IF NOT EXISTS usage_events (
   timestamp TEXT NOT NULL,
   metadata TEXT
 );
+
+CREATE TABLE IF NOT EXISTS memory_vectors (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  embedding BLOB NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_vectors_tenant_domain
+  ON memory_vectors (tenant_id, domain);
 `);

@@ -84,6 +84,30 @@ function appendPersistentRecord(record: LocalMemoryRecord) {
   }
 }
 
+function isExpired(metadata: any | undefined, createdAt: Date): boolean {
+  if (!metadata || typeof metadata !== "object") {
+    return false;
+  }
+  const meta = metadata as any;
+  const now = new Date();
+
+  if (typeof meta.expiresAt === "string") {
+    const d = new Date(meta.expiresAt);
+    if (!Number.isNaN(d.getTime()) && d.getTime() <= now.getTime()) {
+      return true;
+    }
+  }
+
+  if (typeof meta.ttlSeconds === "number" && Number.isFinite(meta.ttlSeconds) && meta.ttlSeconds > 0) {
+    const expiresAtMs = createdAt.getTime() + meta.ttlSeconds * 1000;
+    if (expiresAtMs <= now.getTime()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 loadPersistentMemory();
 
 export function createMemoryRecordFromWriteRequest(
@@ -110,13 +134,26 @@ export function saveMemoryRecord(record: LocalMemoryRecord) {
   appendPersistentRecord(record);
 }
 
-export async function searchMemoryRecords(request: MemorySearchRequest): Promise<MemorySearchResult[]> {
+export async function searchMemoryRecords(
+  request: MemorySearchRequest
+): Promise<MemorySearchResult[]> {
   const { tenantId, type, query, limit = 20 } = request;
   const q = query.toLowerCase();
   const results: MemorySearchResult[] = [];
 
   for (const record of localMemory) {
     if (record.tenantId !== tenantId) {
+      continue;
+    }
+    const meta =
+      record.metadata && typeof record.metadata === "object"
+        ? (record.metadata as any)
+        : undefined;
+    const status = meta ? meta.status : undefined;
+    if (status === "deleted" || status === "suppressed") {
+      continue;
+    }
+    if (isExpired(meta, record.createdAt)) {
       continue;
     }
     if (type && record.type !== type) {
@@ -160,6 +197,17 @@ export function getConversationMemoryRecords(params: {
     if (record.conversationId !== conversationId) {
       return false;
     }
+    const meta =
+      record.metadata && typeof record.metadata === "object"
+        ? (record.metadata as any)
+        : undefined;
+    const status = meta ? meta.status : undefined;
+    if (status === "deleted" || status === "suppressed") {
+      return false;
+    }
+    if (isExpired(meta, record.createdAt)) {
+      return false;
+    }
     if (types && types.length > 0 && !types.includes(record.type)) {
       return false;
     }
@@ -173,4 +221,49 @@ export function getConversationMemoryRecords(params: {
   }
 
   return filtered.slice(filtered.length - limit);
+}
+
+export function updateMemoryStatus(
+  tenantId: string,
+  id: string,
+  status: "active" | "archived" | "deleted" | "suppressed"
+): boolean {
+  let changed = false;
+  for (const record of localMemory) {
+    if (record.tenantId === tenantId && record.id === id) {
+      const metadata = record.metadata ? { ...record.metadata } : {};
+      (metadata as any).status = status;
+      record.metadata = metadata as any;
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) {
+    return false;
+  }
+  try {
+    ensureMemoryDir();
+    const tmpPath = memoryFilePath + ".tmp";
+    const lines: string[] = [];
+    for (const record of localMemory) {
+      const line = JSON.stringify({
+        id: record.id,
+        tenantId: record.tenantId,
+        type: record.type,
+        content: record.content,
+        metadata: record.metadata ?? null,
+        sourceId: record.sourceId ?? null,
+        conversationId: record.conversationId ?? null,
+        messageId: record.messageId ?? null,
+        documentId: record.documentId ?? null,
+        createdAt: record.createdAt.toISOString()
+      });
+      lines.push(line);
+    }
+    fs.writeFileSync(tmpPath, lines.join("\n") + "\n", "utf-8");
+    fs.renameSync(tmpPath, memoryFilePath);
+  } catch {
+    return false;
+  }
+  return true;
 }

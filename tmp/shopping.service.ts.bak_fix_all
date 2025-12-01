@@ -1,0 +1,530 @@
+import { randomUUID } from "crypto";
+import { openai } from "../../integrations/openai/client";
+import { getSummaryModel } from "../../config/model";
+import type {
+  ShoppingRequest,
+  ShoppingResponse,
+  ShoppingJob,
+  ShoppingItem,
+  ShoppingJobType,
+  ShoppingProviderPreference
+} from "./types";
+import { runShoppingPriceAdvisor } from "./pricing";
+import { decideProviderForJob } from "./providers";
+import { runShoppingProductResearch } from "./pricing";
+
+const SHOPPING_AGENT_SYSTEM_PROMPT = `
+Du bist der Shopping-Agent von Aklow.
+
+Aufgabe:
+- Du hilfst Nutzerinnen und Nutzern dabei, Einkäufe zu planen und in strukturierte Einkaufsjobs zu übersetzen.
+- Du arbeitest nur über strukturierte JSON-Antworten (kein reiner Fließtext).
+
+Eingabe:
+- Du erhältst ein JSON-Objekt mit:
+  - "message": natürliche Sprache des Users (z.B. "Mach mir einen Wocheneinkauf für 2 Erwachsene und 1 Kind ..."),
+  - "language": gewünschte Antwortsprache oder "auto",
+  - "countryCode": optional ISO-Ländercode,
+  - "preferredStore": optional bevorzugter Händler.
+
+Ausgabe:
+- Du gibst GENAU EINEN JSON-Wert zurück, minifiziert, ohne Kommentare und ohne zusätzlichen Text.
+- Schema:
+  {
+    "jobType": "weekly_shop" | "restock" | "recipe_based" | "ad_hoc",
+    "providerPreference": "list_only" | "aggregator" | "local_store" | "unknown",
+    "summary": string,
+    "notes": string | null,
+    "items": [
+      {
+        "name": string,
+        "quantity": number | null,
+        "unit": string | null,
+        "notes": string | null,
+        "category": string | null,
+        "priority": "low" | "normal" | "high" | null,
+        "tags": string[] | null,
+        "source": "user" | "assistant" | "pantry" | "recipe" | "other" | null
+      }
+    ]
+  }
+
+Regeln:
+- "summary" ist eine kurze, gut lesbare Zusammenfassung des Einkaufsplans in der Sprache des Users.
+- Fasse ähnliche Artikel sinnvoll zusammen (z.B. "Gemüse für Bolognese").
+- Wenn der User nur grobe Wünsche nennt, schlage sinnvolle Mengen vor (z.B. 2x, 1kg, 3 Stück).
+- Wenn keine klare Provider-Präferenz erkennbar ist, nutze "list_only" oder "unknown".
+- Wenn keine Artikel ermittelt werden können, liefere "items": [] und erkläre die Situation in "summary".
+`;
+
+type RawShoppingItem = {
+  name?: string;
+  quantity?: number | null;
+  unit?: string | null;
+  notes?: string | null;
+  category?: string | null;
+  priority?: string | null;
+  tags?: unknown;
+  source?: string | null;
+};
+
+type LlmShoppingPlan = {
+  jobType?: string;
+  providerPreference?: string;
+  summary?: string;
+  notes?: string | null;
+  items?: RawShoppingItem[] | null;
+};
+
+function normalizeJobType(raw: unknown): ShoppingJobType {
+  if (raw === "weekly_shop") return "weekly_shop";
+  if (raw === "restock") return "restock";
+  if (raw === "recipe_based") return "recipe_based";
+  return "ad_hoc";
+}
+
+function normalizeProviderPreference(raw: unknown): ShoppingProviderPreference {
+  if (raw === "list_only") return "list_only";
+  if (raw === "aggregator") return "aggregator";
+  if (raw === "local_store") return "local_store";
+  return "unknown";
+}
+
+function normalizePriority(raw: unknown): "low" | "normal" | "high" | undefined {
+  if (raw === "low" || raw === "normal" || raw === "high") {
+    return raw;
+  }
+  return undefined;
+}
+
+function normalizeSource(raw: unknown): ShoppingItem["source"] {
+  if (raw === "user") return "user";
+  if (raw === "assistant") return "assistant";
+  if (raw === "pantry") return "pantry";
+  if (raw === "recipe") return "recipe";
+  if (raw === "other") return "other";
+  return undefined;
+}
+
+function toStringOrUndefined(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v : undefined;
+}
+
+function toNumberOrUndefined(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+function toStringArrayOrUndefined(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) {
+    return undefined;
+  }
+  const result = v
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter((x) => x.length > 0);
+  return result.length > 0 ? result : undefined;
+}
+
+export async function handleShoppingQuery(
+  input: ShoppingRequest
+): Promise<ShoppingResponse> {
+  const model = getSummaryModel();
+
+  const payload = {
+    message: input.message,
+    language: input.language ?? "auto",
+    countryCode: input.countryCode ?? null,
+    preferredStore: input.preferredStore ?? null
+  };
+
+  let plan: LlmShoppingPlan = {};
+
+  try {
+    const response = await openai.responses.create({
+      model,
+      instructions: SHOPPING_AGENT_SYSTEM_PROMPT,
+      input: [
+        {
+          role: "user",
+          content: JSON.stringify(payload)
+        }
+      ]
+    });
+
+    const text = (response as any).output_text as string | undefined;
+    if (text && text.trim().length > 0) {
+      try {
+        plan = JSON.parse(text) as LlmShoppingPlan;
+      } catch {
+        plan = {};
+      }
+    }
+  } catch {
+    plan = {};
+  }
+
+  const jobType: ShoppingJobType = normalizeJobType(plan.jobType);
+  const providerPreference: ShoppingProviderPreference = normalizeProviderPreference(
+    plan.providerPreference
+  );
+
+  const rawItems = Array.isArray(plan.items) ? plan.items : [];
+  const items: ShoppingItem[] = rawItems
+    .filter((raw) => raw && typeof raw.name === "string" && raw.name.trim().length > 0)
+    .map((raw) => {
+      const name = (raw.name as string).trim();
+      const quantity = toNumberOrUndefined(raw.quantity);
+      const unit = toStringOrUndefined(raw.unit);
+      const notes = toStringOrUndefined(raw.notes);
+      const category = toStringOrUndefined(raw.category);
+      const priority = normalizePriority(raw.priority);
+      const tags = toStringArrayOrUndefined(raw.tags);
+      const source = normalizeSource(raw.source);
+
+      return {
+        id: randomUUID(),
+        name,
+        normalizedName: name.toLowerCase(),
+        quantity,
+        unit,
+        notes,
+        category,
+        priority,
+        tags,
+        source
+      };
+    });
+
+  const summary =
+    typeof plan.summary === "string" && plan.summary.trim().length > 0
+      ? plan.summary
+      : "Dein Einkaufsplan wurde erstellt.";
+
+  const notes =
+    typeof plan.notes === "string" && plan.notes.trim().length > 0
+      ? plan.notes
+      : undefined;
+
+  const baseJobWithoutProvider: ShoppingJob = {
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    jobType,
+    items,
+    providerPreference,
+    notes,
+    rawPlan: plan
+  };
+
+  const jobWithProvider = decideProviderForJob(baseJobWithoutProvider, {
+    countryCode: input.countryCode ?? null,
+    preferredStore: input.preferredStore ?? null
+  });
+
+  const priceAdvice = await runShoppingPriceAdvisor({
+    job: jobWithProvider,
+    language: input.language,
+    countryCode: input.countryCode ?? null
+  });
+
+  const job: ShoppingJob = {
+    ...jobWithProvider,
+    priceSummary: priceAdvice ?? jobWithProvider.priceSummary
+  };
+
+  let content = summary;
+
+  if (priceAdvice && priceAdvice.trim().length > 0) {
+    content = summary + "\n\n" + priceAdvice.trim();
+  }
+
+  return {
+    tenantId: input.tenantId,
+    sessionId: input.sessionId,
+    content,
+    job
+  };
+}
+type ShoppingMode = "grocery" | "product";
+
+const GROCERY_KEYWORDS: string[] = [
+  "einkauf",
+  "wocheneinkauf",
+  "lebensmittel",
+  "kochen",
+  "essen",
+  "rezept",
+  "frühstück",
+  "mittagessen",
+  "abendessen",
+  "abendbrot",
+  "mittag",
+  "supermarkt",
+  "rewe",
+  "edeka",
+  "aldi",
+  "lidl",
+  "kaufland",
+  "discount",
+  "obst",
+  "gemüse",
+  "haushalt",
+  "toilettenpapier",
+  "putzmittel"
+];
+
+const PRODUCT_KEYWORDS: string[] = [
+  "t-shirt",
+  "tshirt",
+  "shirt",
+  "monitor",
+  "bildschirm",
+  "laptop",
+  "notebook",
+  "staubsauger",
+  "staubsaug",
+  "fernseher",
+  "tv",
+  "headset",
+  "kopfhörer",
+  "maus",
+  "mouse",
+  "keyboard",
+  "tastatur",
+  "amazon",
+  "prime",
+  "otto",
+  "zalando",
+  "mediamarkt",
+  "media markt",
+  "saturn",
+  "schuh",
+  "sneaker",
+  "rucksack",
+  "kamera"
+];
+
+export function detectShoppingModeFromText(text: string): ShoppingMode {
+  const normalized = text.toLowerCase();
+
+  let groceryScore = 0;
+  let productScore = 0;
+
+  for (const w of GROCERY_KEYWORDS) {
+    if (normalized.includes(w)) {
+      groceryScore += 1;
+    }
+  }
+
+  for (const w of PRODUCT_KEYWORDS) {
+    if (normalized.includes(w)) {
+      productScore += 1;
+    }
+  }
+
+  if (productScore === 0 && groceryScore === 0) {
+    return "grocery";
+  }
+
+  if (productScore > groceryScore) {
+    return "product";
+  }
+
+  return "grocery";
+}
+
+type ShoppingProductSearchItem = {
+  id: string;
+  title: string;
+  url: string;
+  sourceKind: string;
+  snippet?: string;
+};
+
+type RunShoppingProductAgentParams = {
+  tenantId: string;
+  sessionId: string;
+  text: string;
+  maxResults?: number;
+  preferredStore?: string | null;
+};
+
+export async function runShoppingProductAgent(
+  params: RunShoppingProductAgentParams
+): Promise< {
+  const tenantId = params.tenantId;
+  const sessionId = params.sessionId;
+  const text = (params.text || "").trim();
+  const maxResults = params.maxResults || 5;
+  const preferredStore = (params.preferredStore || "").trim();
+  let query = text;
+  const lower = text.toLowerCase();
+  if (!query) {
+    query = "Online Produktrecherche";
+  }
+  if (preferredStore && lower.indexOf(preferredStore.toLowerCase()) === -1) {
+    query += " bei " + preferredStore;
+  } else if (lower.indexOf("amazon") === -1) {
+    query += " bei Amazon";
+  }
+  if (lower.indexOf("prime") === -1) {
+    query += ", bevorzugt mit Prime";
+  }
+  if (lower.indexOf("bewertung") === -1 && lower.indexOf("bewert") === -1) {
+    query += ", mit guten Bewertungen";
+  }
+  const items = await runShoppingProductResearch({
+    tenantId,
+    sessionId,
+    query,
+    maxResults
+  });
+  const topItems = (items || []).slice(0, maxResults);
+  let content = "";
+  if (!topItems.length) {
+    content = "Ich habe keine passenden Produkte gefunden. Bitte beschreibe das gewünschte Produkt genauer, zum Beispiel mit Marke, Budget oder Größe.";
+  } else {
+    content = "Hier sind ein paar passende Produktvorschläge aus der Online-Suche:\n\n";
+    for (let i2 = 0; i2 < topItems.length; i2++) {
+      const item = topItems[i2];
+      const index = i2 + 1;
+      const title = item && item.title ? item.title : "Unbenanntes Produkt";
+      content += index.toString() + ". " + title + "\n";
+      if (item && item.snippet) {
+        content += "   " + item.snippet + "\n";
+      }
+      if (item && item.url) {
+        content += "   Link: " + item.url + "\n";
+      }
+      content += "\n";
+    }
+    content += "Die Ergebnisse stammen aus einer Websuche und enthalten keine bezahlte Empfehlung.";
+  }
+  const providerLabel = preferredStore
+    ? "Online-Suche (" + preferredStore + ")"
+    : "Online-Suche";
+  const job = {
+    tenantId,
+    sessionId,
+    jobType: "weekly_shop",
+    items: [],
+    providerPreference: "list_only",
+    providerKey: "online_search",
+    providerLabel,
+    notes: "Product-Mode Suche, keine strukturierte Einkaufsliste.",
+    priceSummary: undefined,
+    rawPlan: {
+      mode: "product",
+      originalText: text,
+      query,
+      items: topItems
+    }
+  };
+  return {
+    tenantId,
+    sessionId,
+    content,
+    job
+  };
+}
+> {
+  const tenantId = params.tenantId;
+  const sessionId = params.sessionId;
+  const text = params.text.trim();
+  const maxResults = params.maxResults ?? 5;
+  const preferredStore = (params.preferredStore ?? "").trim();
+
+  const lower = text.toLowerCase();
+  let query = text;
+
+  const mentionsAmazon = lower.includes("amazon");
+  const mentionsPrime = lower.includes("prime");
+
+  if (!mentionsAmazon) {
+    if (query.length > 0) {
+      query += " ";
+    }
+    query += "bei Amazon";
+  }
+
+  const qualifiers: string[] = [];
+
+  if (!mentionsPrime) {
+    qualifiers.push("bevorzugt mit Prime");
+  }
+
+  if (!lower.includes("bewertung")) {
+    qualifiers.push("mit guten Bewertungen");
+  }
+
+  if (qualifiers.length > 0) {
+    query += ", " + qualifiers.join(", ");
+  }
+
+  const module = await import("./pricing");
+  const runShoppingProductResearch = (module as unknown as {
+    runShoppingProductResearch: (args: {
+      tenantId: string;
+      sessionId: string;
+      query: string;
+      maxResults?: number;
+    }) => Promise<ShoppingProductSearchItem[]>;
+  }).runShoppingProductResearch;
+
+  const items = await runShoppingProductResearch({
+    tenantId,
+    sessionId,
+    query,
+    maxResults
+  });
+
+  const topItems = items.slice(0, maxResults);
+
+  let content = "";
+  if (topItems.length === 0) {
+    content =
+      "Ich habe leider keine passenden Produkte finden können. Du kannst die Beschreibung noch etwas genauer machen, zum Beispiel mit Marke, Budget oder Größe.";
+  } else {
+    content += "Hier sind ein paar passende Produktvorschläge aus der Online-Suche:\n\n";
+    for (let i = 0; i < topItems.length; i += 1) {
+      const item = topItems[i];
+      const index = i + 1;
+      content += index.toString() + ". " + item.title + "\n";
+      if (item.snippet) {
+        content += "   " + item.snippet + "\n";
+      }
+      if (item.url) {
+        content += "   Link: " + item.url + "\n";
+      }
+      content += "\n";
+    }
+    content +=
+      "Die Ergebnisse stammen aus einer Websuche (zum Beispiel Amazon & Co.) und enthalten keine bezahlte Empfehlung.";
+  }
+
+  const providerLabel =
+    preferredStore.length > 0 ? "Online-Suche (" + preferredStore + ")" : "Online-Suche";
+
+  const job = {
+    tenantId,
+    sessionId,
+    jobType: "weekly_shop",
+    items: [],
+    providerPreference: "list_only",
+    providerKey: "online_search",
+    providerLabel,
+    notes: "Product-Mode Suche, keine strukturierte Einkaufsliste.",
+    priceSummary: undefined,
+    rawPlan: {
+      mode: "product",
+      originalText: text,
+      query,
+      items: topItems
+    }
+  };
+
+  return {
+    tenantId,
+    sessionId,
+    content,
+    job
+  };
+}

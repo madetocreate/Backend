@@ -3,36 +3,72 @@ import {
   MemorySearchRequest,
   MemorySearchResult,
   LocalMemoryRecord,
-  MemoryItemType
+  MemoryItemType,
+  MemoryStatus
 } from "./types";
 import { shouldStoreLocally, shouldStoreInVector } from "./policy";
-import { uploadMemoryToVectorStores } from "../vector/service";
 import {
   createMemoryRecordFromWriteRequest,
   saveMemoryRecord,
   searchMemoryRecords,
-  getConversationMemoryRecords
+  getConversationMemoryRecords,
+  updateMemoryStatus
 } from "./repository";
+import { indexMemoryForTenant } from "../vectorLocal/service";
+import { updateVectorStatusForMemory } from "../vectorLocal/repository";
 
-export async function writeMemory(request: MemoryWriteRequest) {
-  const text =
-    typeof request.content === "string"
-      ? request.content
-      : String(request.content ?? "");
-
+export async function writeMemory(
+  request: MemoryWriteRequest
+): Promise<LocalMemoryRecord | null> {
   const createdAt = request.createdAt ?? new Date();
+  const metadata = request.metadata ?? {};
 
-  if (shouldStoreInVector(request.type)) {
-    await uploadMemoryToVectorStores(request, text);
+  const mode = (metadata as any).memoryMode;
+  if (mode === "off" || mode === "ephemeral") {
+    return null;
   }
+
+  let record: LocalMemoryRecord | null = null;
 
   if (shouldStoreLocally(request.type)) {
-    const record = createMemoryRecordFromWriteRequest(request, text, createdAt);
+    record = createMemoryRecordFromWriteRequest(
+      { ...request, metadata },
+      request.content,
+      createdAt
+    );
     saveMemoryRecord(record);
   }
+
+  if (shouldStoreInVector(request.type, metadata)) {
+    try {
+      if (record) {
+        await indexMemoryForTenant(record);
+      } else {
+        const temp = createMemoryRecordFromWriteRequest(
+          { ...request, metadata },
+          request.content,
+          createdAt
+        );
+        await indexMemoryForTenant(temp);
+      }
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          type: "vector_index_error",
+          tenantId: request.tenantId,
+          memoryType: request.type,
+          error: (error as any)?.message ?? "unknown_error"
+        })
+      );
+    }
+  }
+
+  return record;
 }
 
-export async function searchMemory(request: MemorySearchRequest): Promise<MemorySearchResult[]> {
+export async function searchMemory(
+  request: MemorySearchRequest
+): Promise<MemorySearchResult[]> {
   return searchMemoryRecords(request);
 }
 
@@ -42,11 +78,21 @@ export async function getConversationMemory(params: {
   limit?: number;
   types?: MemoryItemType[];
 }): Promise<LocalMemoryRecord[]> {
-  const { tenantId, conversationId, limit, types } = params;
-  return getConversationMemoryRecords({
-    tenantId,
-    conversationId,
-    limit,
-    types
-  });
+  return getConversationMemoryRecords(params);
+}
+
+export async function setMemoryStatus(params: {
+  tenantId: string;
+  id: string;
+  status: MemoryStatus;
+}): Promise<boolean> {
+  const ok = updateMemoryStatus(params.tenantId, params.id, params.status);
+  if (!ok) {
+    return false;
+  }
+  try {
+    updateVectorStatusForMemory(params.tenantId, params.id, params.status);
+  } catch {
+  }
+  return true;
 }

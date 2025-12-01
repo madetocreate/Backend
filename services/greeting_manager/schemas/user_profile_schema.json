@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "required": ["user_id"],
+  "properties": {
+    "user_id": { "type": "string" },
+    "industries": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "news_topics": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "avoid_topics": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "base_news_mix": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "number" }
+    },
+    "languages": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "news_depth": {
+      "type": ["object", "null"],
+      "properties": {
+        "mode": { "type": "string" },
+        "max_cards": { "type": "number" },
+        "deep_dives": { "type": "number" }
+      }
+    }
+  },
+  "additionalProperties": false
+}
