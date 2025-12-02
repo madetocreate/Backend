@@ -11,10 +11,12 @@
     "test": "jest"
   },
   "dependencies": {
-    "@fastify/cors": "^10.0.0",
+    "@fastify/cors": "^10.1.0",
+    "@fastify/helmet": "^13.0.2",
     "better-sqlite3": "^12.4.6",
     "dotenv": "^16.0.0",
     "fastify": "^5.0.0",
+    "jsonwebtoken": "^9.0.2",
     "openai": "^6.9.1",
     "stripe": "^20.0.0",
     "zod": "^3.23.0"
