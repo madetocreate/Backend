@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: aklow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aklow
+      POSTGRES_PASSWORD: aklow_password
+      POSTGRES_DB: aklow
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./sql/postgres/init_pgvector.sql:/docker-entrypoint-initdb.d/init_pgvector.sql
