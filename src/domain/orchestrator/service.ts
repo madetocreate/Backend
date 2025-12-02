@@ -11,6 +11,7 @@ import { searchVectors } from "../vectorLocal/service";
 import { handleMemoryAgentRequest } from "../memoryAgent/service";
 import { handleSupportAssistantQuery, runSupportSideEffects } from "../support/service";
 import { handleShoppingQuery } from "../shopping/service";
+import { runCriticalReview } from "./reviewer";
 
 type OrchestratorStep = {
   id: string;
@@ -896,7 +897,36 @@ if (tool === "support_chat") {
     tools
   });
 
-  const content = response.output_text;
+  let content = response.output_text ?? "";
+
+  const shouldRunReview =
+    metadata.review === true ||
+    metadata.mode === "general_chat_reviewed" ||
+    metadata.enableReview === true;
+
+  if (shouldRunReview && typeof content === "string" && content.trim().length > 0) {
+    steps.push({
+      id: "critical_review",
+      label: "Run critical reviewer on answer",
+      status: "done"
+    });
+
+    const reviewResult = await runCriticalReview({
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      question: input.message,
+      answer: content,
+      metadata
+    });
+
+    if (
+      reviewResult &&
+      typeof reviewResult.improvedAnswer === "string" &&
+      reviewResult.improvedAnswer.trim().length > 0
+    ) {
+      content = reviewResult.improvedAnswer;
+    }
+  }
 
   steps.push({
     id: "store_general_chat_memory",

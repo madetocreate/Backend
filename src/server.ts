@@ -29,6 +29,7 @@ import { registerAiBuilderAgentRoutes } from "./routes/aiBuilderAgent";
 import { registerAiBuilderOrderRoutes } from "./routes/aiBuilderOrder";
 import { registerAiBuilderBlueprintRoutes } from "./routes/aiBuilderBlueprint";
 import { registerLearningAgentRoutes } from "./routes/learningAgent";
+import { registerReviewerAgentRoutes } from "./routes/reviewerAgent";
 
 const app = Fastify({
   bodyLimit: 10 * 1024 * 1024
@@ -88,6 +89,7 @@ app.register(registerSearchRoutes);
 app.register(registerMemoryAdminRoutes);
 app.register(registerMemoryAgentRoutes);
 app.register(registerLearningAgentRoutes);
+app.register(registerReviewerAgentRoutes);
 
 const PORT = Number(process.env.PORT ?? "4000");
 
